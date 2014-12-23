@@ -4,7 +4,7 @@
   <title><![CDATA[Category: Objective-c | O's World]]></title>
   <link href="http://orinchen.github.io/blog/categories/objective-c/atom.xml" rel="self"/>
   <link href="http://orinchen.github.io/"/>
-  <updated>2014-12-23T14:47:02+08:00</updated>
+  <updated>2014-12-23T16:14:29+08:00</updated>
   <id>http://orinchen.github.io/</id>
   <author>
     <name><![CDATA[Orin Chen]]></name>
@@ -12,6 +12,900 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[谈 Objective-C Block 的实现]]></title>
+    <link href="http://orinchen.github.io/blog/2014/03/26/a-look-inside-blocks/"/>
+    <updated>2014-03-26T14:09:38+08:00</updated>
+    <id>http://orinchen.github.io/blog/2014/03/26/a-look-inside-blocks</id>
+    <content type="html"><![CDATA[<p>本文转载自:<a href="http://blog.devtang.com/blog/2013/07/28/a-look-inside-blocks/">唐巧的技术博客</a></p>
+
+<h2>前言</h2>
+
+<p><a href="http://blog.parse.com/2013/02/05/objective-c-blocks-quiz/">这里</a>有关于 <strong>block</strong> 的5道测试题，建议你阅读本文之前先做一下测试。</p>
+
+<p>先介绍一下什么是闭包。在 Wikipedia 上，<a href="http://en.wikipedia.org/wiki/Closure_(computer_science">闭包的定义</a>)是:</p>
+
+<blockquote><p>In programming languages, a closure is a function or reference to a function together with a referencing environment—a table storing a reference to each of the non-local variables (also called free variables or upvalues) of that function.</p></blockquote>
+
+<p>翻译过来就是：</p>
+
+<blockquote><p>闭包是一个函数（或指向函数的指针），再加上该函数执行的外部的上下文变量（有时候也称作自由变量）。</p></blockquote>
+
+<p><strong>block</strong> 实际上就是 Objective-C 语言对于闭包的实现。 <strong>block</strong> 配合上 <strong>dispatch_queue</strong>，可以方便地实现简单的多线程编程和异步编程，关于这个，我之前写过一篇文章介绍：<a href="http://blog.devtang.com/blog/2012/02/22/use-gcd/">《使用GCD》</a>。</p>
+
+<p>本文主要介绍 Objective-C 语言的 <strong>block</strong> 在编译器中的实现方式。主要包括：</p>
+
+<ol>
+<li><strong>block</strong> 的内部实现数据结构介绍</li>
+<li><strong>block</strong> 的三种类型及其相关的内存管理方式</li>
+<li><strong>block</strong> 如何通过 <strong>capture</strong> 变量来达到访问函数外的变量</li>
+</ol>
+
+
+<!--more-->
+
+
+<h2>实现方式</h2>
+
+<h3>数据结构定义</h3>
+
+<p>block的数据结构定义如下（图片来自<a href="http://www.galloway.me.uk/2013/05/a-look-inside-blocks-episode-3-block-copy/">这里</a>)：</p>
+
+<p><img src="/images/posts/2014-03-26-a-look-inside-blocks/block-struct.jpg"></p>
+
+<p>对应的结构体定义如下：</p>
+
+<pre><code class="objc">struct Block_descriptor {
+    unsigned long int reserved;
+    unsigned long int size;
+    void (*copy)(void *dst, void *src);
+    void (*dispose)(void *);
+};
+
+struct Block_layout {
+    void *isa;
+    int flags;
+    int reserved;
+    void (*invoke)(void *, ...);
+    struct Block_descriptor *descriptor;
+    /* Imported variables. */
+};
+</code></pre>
+
+<p>通过该图，我们可以知道，一个 <strong>block</strong> 实例实际上由6部分构成：</p>
+
+<ol>
+<li><strong>isa</strong> 指针，所有对象都有该指针，用于实现对象相关的功能。</li>
+<li><strong>flags</strong>，用于按 bit 位表示一些 <strong>block</strong> 的附加信息，本文后面介绍 <strong>block copy</strong> 的实现代码可以看到对该变量的使用。</li>
+<li><strong>reserved</strong>，保留变量。</li>
+<li><strong>invoke</strong>，函数指针，指向具体的 <strong>block</strong> 实现的函数调用地址。</li>
+<li><strong>descriptor</strong>， 表示该 <strong>block</strong> 的附加描述信息，主要是 <strong>size</strong> 大小，以及 <strong>copy</strong> 和 <strong>dispose</strong>函数的指针。</li>
+<li><strong>variables</strong>，<strong>capture</strong> 过来的变量，<strong>block</strong> 能够访问它外部的局部变量，就是因为将这些变量（或变量的地址）复制到了结构体中。</li>
+</ol>
+
+
+<p>该数据结构和后面的 clang 分析出来的结构实际是一样的，不过仅是结构体的嵌套方式不一样。但这一点我一开始没有想明白，所以也给大家解释一下，如下2个结构体 SampleA 和 SampleB 在内存上是完全一样的，原因是结构体本身并不带有任何额外的附加信息。</p>
+
+<pre><code class="objc">struct SampleA {
+    int a;
+    int b;
+    int c;
+};
+
+struct SampleB {
+    int a;
+    struct Part1 {
+        int b;
+    };
+    struct Part2 {
+        int c;
+    };
+};
+</code></pre>
+
+<p>在 Objective-C 语言中，一共有3种类型的 <strong>block</strong>：</p>
+
+<ol>
+<li><strong>_NSConcreteGlobalBlock</strong> 全局的静态 <strong>block</strong>，不会访问任何外部变量。</li>
+<li><strong>_NSConcreteStackBlock</strong> 保存在栈中的 <strong>block</strong>，当函数返回时会被销毁。</li>
+<li><strong>_NSConcreteMallocBlock</strong> 保存在堆中的 <strong>block</strong>，当引用计数为0时会被销毁。</li>
+</ol>
+
+
+<p>我们在下面会分别来查看它们各自的实现方式上的差别。</p>
+
+<h3>研究工具：clang</h3>
+
+<p>为了研究编译器是如何实现 <strong>block</strong> 的，我们需要使用 clang。clang 提供一个命令，可以将 Objetive-C 的源码改写成 c 语言的，借此可以研究 <strong>block</strong> 具体的源码实现方式。该命令是</p>
+
+<pre><code>clang -rewrite-objc block.c
+</code></pre>
+
+<h3>NSConcreteGlobalBlock 类型的 block 的实现</h3>
+
+<p>我们先新建一个名为 block1.c 的源文件：</p>
+
+<pre><code class="objc">#include &lt;stdio.h&gt;
+
+int main()
+{
+    ^{ printf("Hello, World!\n"); } ();
+    return 0;
+}
+</code></pre>
+
+<p>然后在命令行中输入 <code>clang -rewrite-objc block1.c</code> 即可在目录中看到 clang 输出了一个名为 block1.cpp 的文件。该文件就是 block 在 c 语言实现，我将 block1.cpp 中一些无关的代码去掉，将关键代码引用如下：</p>
+
+<pre><code class="objc">struct __block_impl {
+    void *isa;
+    int Flags;
+    int Reserved;
+    void *FuncPtr;
+};
+
+struct __main_block_impl_0 {
+    struct __block_impl impl;
+    struct __main_block_desc_0* Desc;
+    __main_block_impl_0(void *fp, struct __main_block_desc_0 *desc, int flags=0) {
+        impl.isa = &amp;_NSConcreteStackBlock;
+        impl.Flags = flags;
+        impl.FuncPtr = fp;
+        Desc = desc;
+    }
+};
+static void __main_block_func_0(struct __main_block_impl_0 *__cself) {
+    printf("Hello, World!\n");
+}
+
+static struct __main_block_desc_0 {
+    size_t reserved;
+    size_t Block_size;
+} __main_block_desc_0_DATA = { 0, sizeof(struct __main_block_impl_0) };
+
+int main()
+{
+    (void (*)())&amp;__main_block_impl_0((void *)__main_block_func_0, &amp;__main_block_desc_0_DATA) ();
+    return 0;
+}
+</code></pre>
+
+<p>下面我们就具体看一下是如何实现的。<strong>__main_block_impl_0</strong>  就是该 <strong>block</strong> 的实现，从中我们可以看出：</p>
+
+<ol>
+<li>一个 <strong>block</strong> 实际是一个对象，它主要由一个 <strong>isa</strong> 和 一个 <strong>impl</strong> 和 一个 <strong>descriptor</strong> 组成。</li>
+<li>在本例中，<strong>isa</strong> 指向 <strong>_NSConcreteGlobalBlock</strong>， 主要是为了实现对象的所有特性，在此我们就不展开讨论了。</li>
+<li>由于 clang 改写的具体实现方式和 LLVM 不太一样，并且这里没有开启 ARC。所以这里我们看到 <strong>isa</strong> 指向的还是 <strong>_NSConcreteStackBlock</strong>。但在 LLVM 的实现中，开启 ARC 时，<strong>block</strong> 应该是 <strong>_NSConcreteGlobalBlock</strong> 类型，具体可以看<a href="http://blog.parse.com/2013/02/05/objective-c-blocks-quiz/">《objective-c-blocks-quiz》</a>第二题的解释。</li>
+<li><strong>impl</strong> 是实际的函数指针，本例中，它指向 <strong>__main_block_func_0</strong>。这里的 <strong>impl</strong> 相当于之前提到的 <strong>invoke</strong> 变量，只是 clang 编译器对变量的命名不一样而已。</li>
+<li><strong>descriptor</strong> 是用于描述当前这个 <strong>block</strong> 的附加信息的，包括结构体的大小，需要 <strong>capture</strong> 和 <strong>dispose</strong> 的变量列表等。结构体大小需要保存是因为，每个 <strong>block</strong> 因为会 <strong>capture</strong> 一些变量，这些变量会加到 <strong>__main_block_impl_0</strong> 这个结构体中，使其体积变大。在该例子中我们还看不到相关 <strong>capture</strong> 的代码，后面将会看到。</li>
+</ol>
+
+
+<h3>NSConcreteStackBlock 类型的block的实现</h3>
+
+<p>我们另外新建一个名为 block2.c 的文件，输入以下内容：</p>
+
+<pre><code class="objc">#include &lt;stdio.h&gt;
+
+int main() {
+    int a = 100;
+    void (^block2)(void) = ^{
+        printf("%d\n", a);
+    };
+    block2();
+
+    return 0;
+}
+</code></pre>
+
+<p>用之前提到的 clang 工具，转换后的关键代码如下：</p>
+
+<pre><code class="objc">struct __main_block_impl_0 {
+    struct __block_impl impl;
+    struct __main_block_desc_0* Desc;
+    int a;
+    __main_block_impl_0(void *fp, struct __main_block_desc_0 *desc, int _a, int flags=0) : a(_a) {
+        impl.isa = &amp;_NSConcreteStackBlock;
+        impl.Flags = flags;
+        impl.FuncPtr = fp;
+        Desc = desc;
+    }
+};
+static void __main_block_func_0(struct __main_block_impl_0 *__cself) {
+    int a = __cself-&gt;a; // bound by copy
+    printf("%d\n", a);
+}
+
+static struct __main_block_desc_0 {
+    size_t reserved;
+    size_t Block_size;
+} __main_block_desc_0_DATA = { 0, sizeof(struct __main_block_impl_0)};
+
+int main()
+{
+    int a = 100;
+    void (*block2)(void) = (void (*)())&amp;__main_block_impl_0((void *)__main_block_func_0, &amp;__main_block_desc_0_DATA, a);
+    ((void (*)(__block_impl *))((__block_impl *)block2)-&gt;FuncPtr)((__block_impl *)block2);
+
+    return 0;
+}
+</code></pre>
+
+<p>在本例中，我们可以看到：</p>
+
+<ol>
+<li>本例中，<strong>isa</strong> 指向 <strong>_NSConcreteStackBlock</strong>，说明这是一个分配在栈上的实例。</li>
+<li><strong>main_block_impl_0</strong>  中增加了一个变量 <strong>a</strong>，在 <strong>block</strong> 中引用的变量 <strong>a</strong> 实际是在申明 <strong>block</strong> 时，被复制到 <strong>main_block_impl_0</strong>结构体中的那个变量 <strong>a</strong>。因为这样，我们就能理解，在 <strong>block</strong> 内部修改变量a的内容，不会影响外部的实际变量 <strong>a</strong>。</li>
+<li><strong>main_block_impl_0</strong> 中由于增加了一个变量 <strong>a</strong>，所以结构体的大小变大了，该结构体大小被写在了 <strong>main_block_desc_0</strong> 中。</li>
+</ol>
+
+
+<p>我们修改上面的源码，在变量前面增加 <strong>__block</strong> 关键字：</p>
+
+<pre><code class="objc">#include &lt;stdio.h&gt;
+
+int main()
+{
+    __block int i = 1024;
+    void (^block1)(void) = ^{
+        printf("%d\n", i);
+        i = 1023;
+    };
+    block1();
+    return 0;
+}
+</code></pre>
+
+<p>生成的关键代码如下，可以看到，差异相当大：</p>
+
+<pre><code class="objc">struct __Block_byref_i_0 {
+    void *__isa;
+    __Block_byref_i_0 *__forwarding;
+    int __flags;
+    int __size;
+    int i;
+};
+
+struct __main_block_impl_0 {
+    struct __block_impl impl;
+    struct __main_block_desc_0* Desc;
+    __Block_byref_i_0 *i; // by ref
+    __main_block_impl_0(void *fp, struct __main_block_desc_0 *desc, __Block_byref_i_0 *_i, int flags=0) : i(_i-&gt;__forwarding) {
+        impl.isa = &amp;_NSConcreteStackBlock;
+        impl.Flags = flags;
+        impl.FuncPtr = fp;
+        Desc = desc;
+    }
+};
+static void __main_block_func_0(struct __main_block_impl_0 *__cself) {
+    __Block_byref_i_0 *i = __cself-&gt;i; // bound by ref
+
+    printf("%d\n", (i-&gt;__forwarding-&gt;i));
+    (i-&gt;__forwarding-&gt;i) = 1023;
+}
+
+static void __main_block_copy_0(struct __main_block_impl_0*dst, struct __main_block_impl_0*src) {_Block_object_assign((void*)&amp;dst-&gt;i, (void*)src-&gt;i, 8/*BLOCK_FIELD_IS_BYREF*/);}
+
+static void __main_block_dispose_0(struct __main_block_impl_0*src) {_Block_object_dispose((void*)src-&gt;i, 8/*BLOCK_FIELD_IS_BYREF*/);}
+
+static struct __main_block_desc_0 {
+    size_t reserved;
+    size_t Block_size;
+    void (*copy)(struct __main_block_impl_0*, struct __main_block_impl_0*);
+    void (*dispose)(struct __main_block_impl_0*);
+} __main_block_desc_0_DATA = { 0, sizeof(struct __main_block_impl_0), __main_block_copy_0, __main_block_dispose_0};
+
+int main()
+{
+    __attribute__((__blocks__(byref))) __Block_byref_i_0 i = {(void*)0,(__Block_byref_i_0 *)&amp;i, 0, sizeof(__Block_byref_i_0), 1024};
+    void (*block1)(void) = (void (*)())&amp;__main_block_impl_0((void *)__main_block_func_0, &amp;__main_block_desc_0_DATA, (__Block_byref_i_0 *)&amp;i, 570425344);
+    ((void (*)(__block_impl *))((__block_impl *)block1)-&gt;FuncPtr)((__block_impl *)block1);
+    return 0;
+}
+</code></pre>
+
+<p>从代码中我们可以看到：</p>
+
+<ol>
+<li>源码中增加一个名为 <strong>__Block_byref_i_0</strong> 的结构体，用来保存我们要 <strong>capture</strong> 并且修改的变量 <strong>i</strong>。</li>
+<li><strong>main_block_impl_0</strong> 中引用的是 <strong>Block_byref_i_0</strong> 的结构体指针，这样就可以达到修改外部变量的作用。</li>
+<li><strong>__Block_byref_i_0</strong> 结构体中带有 <strong>isa</strong>，说明它也是一个对象。</li>
+<li>我们需要负责 <strong>Block_byref_i_0</strong> 结构体相关的内存管理，所以 <strong>main_block_desc_0</strong> 中增加了 <strong>copy</strong> 和 <strong>dispose</strong> 函数指针，对于在调用前后修改相应变量的引用计数。</li>
+</ol>
+
+
+<h3>NSConcreteMallocBlock 类型的block的实现</h3>
+
+<p><strong>NSConcreteMallocBlock</strong> 类型的 <strong>block</strong> 通常不会在源码中直接出现，因为默认它是当一个 <strong>block</strong> 被 <strong>copy</strong> 的时候，才会将这个 <strong>block</strong> 复制到堆中。以下是一个 <strong>block</strong> 被 <strong>copy</strong> 时的示例代码(来自<a href="http://www.galloway.me.uk/2013/05/a-look-inside-blocks-episode-3-block-copy/">这里</a>)，可以看到，在第8步，目标的 <strong>block</strong> 类型被修改为 <strong>_NSConcreteMallocBlock</strong>。</p>
+
+<pre><code class="objc">static void *_Block_copy_internal(const void *arg, const int flags) {
+    struct Block_layout *aBlock;
+    const bool wantsOne = (WANTS_ONE &amp; flags) == WANTS_ONE;
+
+    // 1
+    if (!arg) return NULL;
+
+    // 2
+    aBlock = (struct Block_layout *)arg;
+
+    // 3
+    if (aBlock-&gt;flags &amp; BLOCK_NEEDS_FREE) {
+        // latches on high
+        latching_incr_int(&amp;aBlock-&gt;flags);
+        return aBlock;
+    }
+
+    // 4
+    else if (aBlock-&gt;flags &amp; BLOCK_IS_GLOBAL) {
+        return aBlock;
+    }
+
+    // 5
+    struct Block_layout *result = malloc(aBlock-&gt;descriptor-&gt;size);
+    if (!result) return (void *)0;
+
+    // 6
+    memmove(result, aBlock, aBlock-&gt;descriptor-&gt;size); // bitcopy first
+
+    // 7
+    result-&gt;flags &amp;= ~(BLOCK_REFCOUNT_MASK);    // XXX not needed
+    result-&gt;flags |= BLOCK_NEEDS_FREE | 1;
+
+    // 8
+    result-&gt;isa = _NSConcreteMallocBlock;
+
+    // 9
+    if (result-&gt;flags &amp; BLOCK_HAS_COPY_DISPOSE) {
+        (*aBlock-&gt;descriptor-&gt;copy)(result, aBlock); // do fixup
+    }
+
+    return result;
+}
+</code></pre>
+
+<h2>变量的复制</h2>
+
+<p>对于 <strong>block</strong> 外的变量引用，<strong>block</strong> 默认是将其复制到其数据结构中来实现访问的，如下图所示（图片来自<a href="http://rypress.com/tutorials/objective-c/blocks.html">这里</a>）：</p>
+
+<p><img src="/images/posts/2014-03-26-a-look-inside-blocks/block-capture-1.jpg"></p>
+
+<p>对于用 <strong>__block</strong> 修饰的外部变量引用，<strong>block</strong> 是复制其引用地址来实现访问的，如下图所示（图片来自<a href="http://rypress.com/tutorials/objective-c/blocks.html">这里</a>）：</p>
+
+<p><img src="/images/posts/2014-03-26-a-look-inside-blocks/block-capture-2.jpg"></p>
+
+<h2>LLVM源码</h2>
+
+<p>在 LLVM 开源的关于 <a href="https://llvm.org/svn/llvm-project/compiler-rt/trunk/BlocksRuntime/Block_private.h"><strong>block</strong> 的实现源码</a>，其内容也和我们用 clang 改写得到的内容相似，印证了我们对于 <strong>block</strong> 内部数据结构的推测。</p>
+
+<h2>ARC对block类型的影响</h2>
+
+<p>在 ARC 开启的情况下，将只会有 <strong>NSConcreteGlobalBlock</strong> 和 <strong>NSConcreteMallocBlock</strong> 类型的 <strong>block</strong>。</p>
+
+<p>原本的 <strong>NSConcreteStackBlock</strong> 的 <strong>block</strong> 会被 <strong>NSConcreteMallocBlock</strong> 类型的 <strong>block</strong> 替代。证明方式是以下代码在 XCode 中，会输出 <code>&lt;__NSMallocBlock__: 0x100109960&gt;</code>。在苹果的官方文档中也提到，当把栈中的 <strong>block</strong> 返回时，不需要调用 <strong>copy</strong> 方法了。</p>
+
+<pre><code class="objc">#import &lt;Foundation/Foundation.h&gt;
+
+int main(int argc, const char * argv[])
+{
+    @autoreleasepool {
+        int i = 1024;
+        void (^block1)(void) = ^{
+            printf("%d\n", i);
+        };
+        block1();
+        NSLog(@"%@", block1);
+    }
+    return 0;
+}
+</code></pre>
+
+<p>我个人认为这么做的原因是，由于 ARC 已经能很好地处理对象的生命周期的管理，这样所有对象都放到堆上管理，对于编译器实现来说，会比较方便。</p>
+
+<h2>参考链接</h2>
+
+<p>希望本文能加深你对于 <strong>block</strong> 的理解。我在学习中，查阅了以下文章，一并分享给大家。祝大家玩得开心～</p>
+
+<ul>
+<li><p><a href="http://www.galloway.me.uk/2012/10/a-look-inside-blocks-episode-1">A look inside blocks: Episode 1</a></p></li>
+<li><p><a href="http://www.galloway.me.uk/2012/10/a-look-inside-blocks-episode-2/">A look inside blocks: Episode 2</a></p></li>
+<li><p><a href="http://www.galloway.me.uk/2013/05/a-look-inside-blocks-episode-3-block-copy/">A look inside blocks: Episode 3</a></p></li>
+<li><p><a href="http://www.cnblogs.com/biosli/archive/2013/05/29/iOS_Objective-C_Block.html">对Objective-C中Block的追探</a></p></li>
+<li><p><a href="https://llvm.org/svn/llvm-project/compiler-rt/trunk/BlocksRuntime/Block_private.h">LLVM中block实现源码</a></p></li>
+<li><p><a href="http://blog.parse.com/2013/02/05/objective-c-blocks-quiz/">objective-c-blocks-quiz</a></p></li>
+<li><p><a href="http://rypress.com/tutorials/objective-c/blocks.html">Blocks</a></p></li>
+</ul>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Objective-C对象模型及应用]]></title>
+    <link href="http://orinchen.github.io/blog/2014/03/20/objective-c-object-model/"/>
+    <updated>2014-03-20T10:43:32+08:00</updated>
+    <id>http://orinchen.github.io/blog/2014/03/20/objective-c-object-model</id>
+    <content type="html"><![CDATA[<p>本文转载自:<a href="http://blog.devtang.com/blog/2013/10/15/objective-c-object-model/">唐巧的技术博客</a></p>
+
+<h2>前言</h2>
+
+<p>本文主要介绍 Objective-C 对象模型的实现细节，以及 Objective-C 语言对象模型中对 <strong>isa swizzling</strong> 和 <strong>method swizzling</strong> 的支持。希望本文能加深你对 Objective-C 对象的理解。</p>
+
+<!--more-->
+
+
+<h2>ISA指针</h2>
+
+<p>Objective-C 是一门面向对象的编程语言。每一个对象都是一个类的实例。在 Objective-C 语言的内部，每一个对象都有一个名为 <strong>isa</strong> 的指针，指向该对象的类。每一个类描述了一系列它的实例的特点，包括成员变量的列表，成员函数的列表等。每一个对象都可以接受消息，而对象能够接收的消息列表是保存在它所对应的类中。</p>
+
+<p>在 XCode 中按 <em>Shift + Command + O</em>, 然后输入 NSObject.h 和 objc.h，可以打开 <code>NSObject</code> 的定义头文件，通过头文件我们可以看到，<code>NSObject</code> 就是一个包含 <strong>isa</strong> 指针的结构体，如下图所示：</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-nsobject-isa.jpg"></p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-objc-object-isa.jpg"></p>
+
+<p>按照面向对象语言的设计原则，所有事物都应该是对象（严格来说 Objective-C 并没有完全做到这一点，因为它有象 int, double 这样的简单变量类型）。在 Objective-C 语言中，每一个类实际上也是一个对象。每一个类也有一个名为 <strong>isa</strong> 的指针。每一个类也可以接受消息，例如 <code>[NSObject alloc]</code>，就是向 NSObject 这个类发送名为 <code>alloc</code> 消息。</p>
+
+<p>在 XCode 中按 <em>Shift + Command + O</em>, 然后输入 runtime.h，可以打开 Class 的定义头文件，通过头文件我们可以看到，Class 也是一个包含 <strong>isa</strong> 指针的结构体，如下图所示。（图中除了 <strong>isa</strong> 外还有其它成员变量，但那是为了兼容非2.0版的 Objective-C 的遗留逻辑，大家可以忽略它。）</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-objc-class-isa.jpg"></p>
+
+<p>因为类也是一个对象，那它也必须是另一个类的实列，这个类就是元类(<strong>metaclass</strong>)。元类保存了类方法的列表。当一个类方法被调用时，元类会首先查找它本身是否有该类方法的实现，如果没有，则该元类会向它的父类查找该方法，直到一直找到继承链的头。</p>
+
+<p>元类(<strong>metaclass</strong>)也是一个对象，那么元类的 <strong>isa</strong> 指针又指向哪里呢？为了设计上的完整，所有的元类的 <strong>isa</strong> 指针都会指向一个根元类(<strong>root metaclass</strong>)。根元类(<strong>root metaclass</strong>)本身的 <strong>isa</strong> 指针指向自己，这样就行成了一个闭环。上面提到，一个对象能够接收的消息列表是保存在它所对应的类中的。在实际编程中，我们几乎不会遇到向元类发消息的情况，那它的 <strong>isa</strong> 指针在实际上很少用到。不过这么设计保证了面向对象的干净，即所有事物都是对象，都有 <strong>isa</strong> 指针。</p>
+
+<p>我们再来看看继承关系，由于类方法的定义是保存在元类(<strong>metaclass</strong>)中，而方法调用的规则是：如果该类没有一个方法的实现，则向它的父类继续查找。所以，为了保证父类的类方法可以在子类中可以被调用，所以子类的元类会继承父类的元类，换而言之，类对象和元类对象有着同样的继承关系。</p>
+
+<p>我很想把关系说清楚一些，但是这块儿确实有点绕，下面这张图或许能够让大家对 <strong>isa</strong>和继承的关系清楚一些（该图片来自<a href="http://www.sealiesoftware.com/blog/class%20diagram.pdf">这里</a>）:</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-diagram.jpg"></p>
+
+<p>该图中，最让人困惑的莫过于 <strong>Root Class</strong> 了。在实现中，<strong>Root Class</strong> 是指 <strong>NSObject</strong>，我们可以从图中看出：</p>
+
+<ol>
+<li>NSObject 类包括它的对象实例方法。</li>
+<li>NSObject 的元类包括它的类方法，例如 alloc 方法。</li>
+<li>NSObject 的元类继承自 NSObject 类。</li>
+<li>一个 NSObject 的类中的方法同时也会被 NSObject 的子类在查找方法时找到。</li>
+</ol>
+
+
+<h2>类的成员变量</h2>
+
+<p>如果把类的实例看成一个 <strong>C</strong> 语言的结构体（<strong>struct</strong>），上面说的 <strong>isa</strong> 指针就是这个结构体的第一个成员变量，而类的其它成员变量依次排列在结构体中。排列顺序如下图所示（图片来自《iOS 6 Programming Pushing the Limits》）：</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-member.jpg"></p>
+
+<p>为了验证该说法，我们在 XCode 中新建一个工程，在 main.m 中运行如下代码：</p>
+
+<pre><code class="objc">#import &lt;UIKit/UIKit.h&gt;
+
+@interface Father : NSObject {
+    int _father;
+}
+
+@end
+
+@implementation Father
+
+@end
+
+@interface Child : Father {
+    int _child;
+}
+
+@end
+
+@implementation Child
+
+@end
+
+int main(int argc, char * argv[])
+{
+  Child * child = [[Child alloc] init];
+  @autoreleasepool {
+      // ...
+  }
+}
+</code></pre>
+
+<p>我们将断点下在 <code>@autoreleasepool</code> 处，然后在 <strong>Console</strong> 中输入 <code>p *child</code>,则可以看到 Xcode 输出如下内容，这与我们上面的说法一致。</p>
+
+<pre><code>(lldb) p *child
+(Child) $0 = {
+  (Father) Father = {
+    (NSObject) NSObject = {
+      (Class) isa = Child
+    }
+    (int) _father = 0
+  }
+  (int) _child = 0
+}
+</code></pre>
+
+<h2>可变与不可变</h2>
+
+<p>因为对象在内存中的排布可以看成一个结构体，该结构体的大小并不能动态变化。所以无法在运行时动态给对象增加成员变量。</p>
+
+<p>相对的，对象的方法定义都保存在类的可变区域中。Objective-C 2.0 并未在头文件中将实现暴露出来，但在 Objective-C 1.0 中，我们可以看到方法的定义列表是一个名为 <strong>methodLists</strong> 的指针的指针（如下图所示）。通过修改该指针指向的指针的值，就可以实现动态地为某一个类增加成员方法。这也是 <strong>Category</strong> 实现的原理。同时也说明了为什么 <strong>Category</strong> 只可为对象增加成员方法，却不能增加成员变量。</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-objc-class-isa.jpg"></p>
+
+<p>需要特别说明一下，通过 <code>objc_setAssociatedObject</code> 和 <code>objc_getAssociatedObject</code> 方法可以变相地给对象增加成员变量，但由于实现机制不一样，所以并不是真正改变了对象的内存结构。</p>
+
+<p>除了对象的方法可以动态修改，因为 <strong>isa</strong> 本身也只是一个指针，所以我们也可以在运行时动态地修改 <strong>isa</strong> 指针的值，达到替换对象整个行为的目的。不过该应用场景较少。</p>
+
+<h2>系统相关API及应用</h2>
+
+<h3>isa swizzling 的应用</h3>
+
+<p>系统提供的 <strong>KVO</strong> 的实现，就利用了动态地修改 <strong>isa</strong> 指针的值的技术。在苹果的文档中可以看到如下描述：</p>
+
+<blockquote><p>Key-Value Observing Implementation Details</p>
+
+<p>Automatic key-value observing is implemented using a technique called isa-swizzling.</p>
+
+<p>The isa pointer, as the name suggests, points to the object’s class which maintains a dispatch table. This dispatch table essentially contains pointers to the methods the class implements, among other data.</p>
+
+<p>When an observer is registered for an attribute of an object the isa pointer of the observed object is modified, pointing to an intermediate class rather than at the true class. As a result the value of the isa pointer does not necessarily reflect the actual class of the instance.</p>
+
+<p>You should never rely on the isa pointer to determine class membership. Instead, you should use the class method to determine the class of an object instance.</p></blockquote>
+
+<h3>Method Swizzling API说明</h3>
+
+<p>Objective-C 提供了以下 API 来动态替换类方法或实例方法的实现：</p>
+
+<ul>
+<li><code>class_replaceMethod</code> 替换类方法的定义</li>
+<li><code>method_exchangeImplementations</code> 交换2个方法的实现</li>
+<li><code>method_setImplementation</code> 设置1个方法的实现</li>
+</ul>
+
+
+<p>这 3 个方法有一些细微的差别，给大家介绍如下：</p>
+
+<ul>
+<li><code>class_replaceMethod</code> 在苹果的文档（如下图所示）中能看到，它有两种不同的行为。当类中没有想替换的原方法时，该方法会调用 <code>class_addMethod</code> 来为该类增加一个新方法，也因为如此，<code>class_replaceMethod</code> 在调用时需要传入 <code>types</code> 参数，而 <code>method_exchangeImplementations</code> 和 <code>method_setImplementation</code> 却不需要。</li>
+</ul>
+
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-replace-method.jpg"></p>
+
+<ul>
+<li><code>method_exchangeImplementations</code> 的内部实现其实是调用了2次 <code>method_setImplementation</code> 方法，从苹果的文档中能清晰地了解到（如下图所示）</li>
+</ul>
+
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-method-exchange-imp.jpg"></p>
+
+<p>从以上的区别我们可以总结出这3个API的使用场景:</p>
+
+<ul>
+<li><code>class_replaceMethod</code>, 当需要替换的方法可能有不存在的情况时，可以考虑使用该方法。</li>
+<li><code>method_exchangeImplementations</code>，当需要交换2个方法的实现时使用。</li>
+<li><code>method_setImplementation</code> 最简单的用法，当仅仅需要为一个方法设置其实现方式时使用。</li>
+</ul>
+
+
+<h2>使用示例</h2>
+
+<p>我们在开发猿题库客户端的笔记功能时，需要使用系统的 <code>UIImagePickerController</code>。但是，我们发现，在 iOS6.0.2 系统下，系统提供的 <code>UIImagePickerController</code> 在 iPad 横屏下有转屏的 Bug，造成其方向错误。具体的 Bug 详情可以见<a href="http://stackoverflow.com/questions/12522491/crash-on-presenting-uiimagepickercontroller-under-ios-6-0">这里</a>。</p>
+
+<p>为了修复该 Bug，我们需要替换 <code>UIImagePickerController</code> 的如下2个方法</p>
+
+<pre><code class="objc">
+- (BOOL)shouldAutorotate;
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation;
+</code></pre>
+
+<p>我们先实现了一个名为 <code>ImagePickerReplaceMethodsHolder</code> 的类，用于定义替换后的方法和实现。如下所示：</p>
+
+<pre><code class="objc">// ImagePickerReplaceMethodsHolder.h
+@interface ImagePickerReplaceMethodsHolder : NSObject
+
+- (BOOL)shouldAutorotate;
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation;
+
+@end
+
+// ImagePickerReplaceMethodsHolder.m
+@implementation ImagePickerReplaceMethodsHolder
+
+- (BOOL)shouldAutorotate {
+    return NO;
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
+    return UIInterfaceOrientationPortrait;
+}
+
+
+@end
+</code></pre>
+
+<p>然后，我们在调用处，判断当前的 iOS 版本，对于[iOS6.0, iOS6.1)之间的版本，我们将 <code>UIImagePickerController</code> 的有问题的方法替换。具体代码如下：</p>
+
+<pre><code class="objc">#define SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
+#define SYSTEM_VERSION_LESS_THAN(v)                 ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] == NSOrderedAscending)
+
++ (void)load {
+    static dispatch_once_t onceToken;
+    dispatch_once(&amp;onceToken, ^{
+        [self hackForImagePicker];
+    });
+}
+
++ (void)hackForImagePicker {
+    // fix bug of image picker under iOS 6.0
+    // http://stackoverflow.com/questions/12522491/crash-on-presenting-uiimagepickercontroller-under-ios-6-0
+    if (SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(@"6.0")
+        &amp;&amp; SYSTEM_VERSION_LESS_THAN(@"6.1")) {
+        Method oldMethod1 = class_getInstanceMethod([UIImagePickerController class], @selector(shouldAutorotate));
+        Method newMethod1 = class_getInstanceMethod([ImagePickerReplaceMethodsHolder class], @selector(shouldAutorotate));
+        method_setImplementation(oldMethod1, method_getImplementation(newMethod1));
+
+        Method oldMethod2 = class_getInstanceMethod([UIImagePickerController class], @selector(preferredInterfaceOrientationForPresentation));
+        Method newMethod2 = class_getInstanceMethod([ImagePickerReplaceMethodsHolder class], @selector(preferredInterfaceOrientationForPresentation));
+        method_setImplementation(oldMethod2, method_getImplementation(newMethod2));
+    }
+}
+</code></pre>
+
+<p>通过如上代码，我们就针对 iOS 特定版本的有问题的系统库函数打了 Patch，使问题得到解决。</p>
+
+<h2>开源界的使用</h2>
+
+<p>有少量不明真相的同学以为苹果在审核时会拒绝 App 使用以上 API，这其实是对苹果的误解。使用如上 API 是安全的。另外，开源界也对以上方法都适当的使用。例如：</p>
+
+<ul>
+<li><p>著名的网络库 <strong>AFNetworking</strong>。<strong>AFNetworking</strong> 网络库(v1.x版本)使用了 <code>class_replaceMethod</code> 方法（AFHTTPRequestOperation.m文件第105行）</p></li>
+<li><p>Nimbus。Nimbus 是著名的工具类库，它在其 core 模块中提供了 NIRuntimeClassModifications.h文件，用于提供上述 API 的封装。</p></li>
+<li><p>国内的大众点评 iOS 客户端。该客户端使用了他们自己开发的基于 Wax 修改而来的 <a href="https://github.com/mmin18/WaxPatch">WaxPatch</a>，WaxPatch 可以实现通过服务器更新来动态修改客户端的逻辑。而 WaxPatch 主要是修改了 Wax 中的 wax_instance.m文件，在其中加入了 <code>class_replaceMethod</code> 来替换原始实现，从而实现修改客户端的原有行为。</p></li>
+</ul>
+
+
+<h2>总结</h2>
+
+<p>通过本文，我们了解到了 Objective-C 语言的对象模型，以及 Objective-C 语言对象模型中对 <strong>isa swizzling</strong> 和 <strong>method swizzling</strong> 的支持。本文也通过具体的实例代码和开源项目，让我们对该对象模型提供的动态性有了更加深刻的认识。</p>
+
+<h2>后记</h2>
+
+<p>文章发表后，一些同行指出在 ARM64 的 CP U下，<strong>isa</strong> 的内部结构有变化。这点我是知道的，不过希望以后再撰文讨论。感兴趣的同学可以查看苹果今年WWDC2013的视频：《Session 404 Advanced in Objective-C》。</p>
+
+<h2>参考链接</h2>
+
+<ul>
+<li><p><a href="https://developer.apple.com/library/mac/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Introduction/Introduction.html">https://developer.apple.com/library/mac/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Introduction/Introduction.html</a></p></li>
+<li><p><a href="http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html">http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html</a></p></li>
+<li><p><a href="http://www.devalot.com/articles/2011/11/objc-object-model.html">http://www.devalot.com/articles/2011/11/objc-object-model.html</a></p></li>
+<li><p><a href="http://www.cocoawithlove.com/2010/01/what-is-meta-class-in-objective-c.html">http://www.cocoawithlove.com/2010/01/what-is-meta-class-in-objective-c.html</a></p></li>
+<li><p><a href="http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html">http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html</a></p></li>
+<li><p><a href="http://wwwmain.gnustep.org/resources/downloads.php">gunstep的实现源码</a></p></li>
+<li><p><a href="http://algorithm.com.au/downloads/talks/objective-c-internals/objective-c-internals.pdf">http://algorithm.com.au/downloads/talks/objective-c-internals/objective-c-internals.pdf</a></p></li>
+<li><p><a href="http://opensource.apple.com/source/objc4/objc4-532/runtime/">http://opensource.apple.com/source/objc4/objc4-532/runtime/</a></p></li>
+<li><p><a href="https://github.com/AFNetworking/AFNetworking">https://github.com/AFNetworking/AFNetworking</a></p></li>
+<li><p><a href="https://github.com/jverkoey/nimbus">https://github.com/jverkoey/nimbus</a></p></li>
+<li><p><a href="https://github.com/mmin18/WaxPatch">https://github.com/mmin18/WaxPatch</a></p></li>
+</ul>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[使用 GCD]]></title>
+    <link href="http://orinchen.github.io/blog/2014/03/15/use-gcd/"/>
+    <updated>2014-03-15T10:35:36+08:00</updated>
+    <id>http://orinchen.github.io/blog/2014/03/15/use-gcd</id>
+    <content type="html"><![CDATA[<p>本文转载自:<a href="http://blog.devtang.com/blog/2012/02/22/use-gcd/">唐巧的技术博客</a></p>
+
+<h2>什么是GCD</h2>
+
+<p>Grand Central Dispatch (GCD)是 Apple 开发的一个多核编程的解决方法。该方法在 Mac OS X 10.6 雪豹中首次推出，并随后被引入到了 iOS4.0 中。GCD 是一个替代诸如 NSThread, NSOperationQueue, NSInvocationOperation 等技术的很高效和强大的技术，它看起来象就其它语言的闭包(Closure)一样，但苹果把它叫做 blocks。</p>
+
+<!--more-->
+
+
+<h2>应用举例</h2>
+
+<p>让我们来看一个编程场景。我们要在 iPhone 上做一个下载网页的功能，该功能非常简单，就是在 iPhone 上放置一个按钮，点击该按钮时，显示一个转动的圆圈，表示正在进行下载，下载完成之后，将内容加载到界面上的一个文本控件中。</p>
+
+<h2>不用GCD前</h2>
+
+<p>虽然功能简单，但是我们必须把下载过程放到后台线程中，否则会阻塞UI线程显示。所以，如果不用 GCD, 我们需要写如下3个方法：</p>
+
+<ul>
+<li>someClick 方法是点击按钮后的代码，可以看到我们用 NSInvocationOperation 建了一个后台线程，并且放到 NSOperationQueue 中。后台线程执行 download 方法。</li>
+<li>download 方法处理下载网页的逻辑。下载完成后用 performSelectorOnMainThread 执行download_completed 方法。</li>
+<li>download_completed 进行 clear up 的工作，并把下载的内容显示到文本控件中。</li>
+</ul>
+
+
+<p>这3个方法的代码如下。可以看到，虽然 开始下载 –> 下载中 –> 下载完成 这3个步骤是整个功能的三步。但是它们却被切分成了3块。他们之间因为是3个方法，所以还需要传递数据参数。如果是复杂的应用，数据参数很可能就不象本例子中的 NSString 那么简单了，另外，下载可能放到 Model 的类中来做，而界面的控制放到 View Controller 层来做，这使得本来就分开的代码变得更加散落。代码的可读性大大降低。</p>
+
+<pre><code class="objc">static NSOperationQueue * queue;
+
+- (IBAction)someClick:(id)sender {
+    self.indicator.hidden = NO;
+    [self.indicator startAnimating];
+    queue = [[NSOperationQueue alloc] init];
+    NSInvocationOperation * op = [[[NSInvocationOperation alloc] initWithTarget:self selector:@selector(download) object:nil] autorelease];
+    [queue addOperation:op];
+}
+
+- (void)download {
+    NSURL * url = [NSURL URLWithString:@"http://www.youdao.com"];
+    NSError * error;
+    NSString * data = [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:&amp;error];
+    if (data != nil) {
+        [self performSelectorOnMainThread:@selector(download_completed:) withObject:data waitUntilDone:NO];
+    } else {
+        NSLog(@"error when download:%@", error);
+        [queue release];
+    }
+}
+
+- (void) download_completed:(NSString *) data {
+    NSLog(@"call back");
+    [self.indicator stopAnimating];
+    self.indicator.hidden = YES;
+    self.content.text = data;
+    [queue release];
+}
+</code></pre>
+
+<h2>使用GCD后</h2>
+
+<p>如果使用 GCD，以上3个方法都可以放到一起，如下所示：</p>
+
+<pre><code class="objc">// 原代码块一
+self.indicator.hidden = NO;
+[self.indicator startAnimating];
+dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    // 原代码块二
+    NSURL * url = [NSURL URLWithString:@"http://www.youdao.com"];
+    NSError * error;
+    NSString * data = [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:&amp;error];
+    if (data != nil) {
+        // 原代码块三
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.indicator stopAnimating];
+            self.indicator.hidden = YES;
+            self.content.text = data;
+        });
+    } else {
+        NSLog(@"error when download:%@", error);
+    }
+});
+</code></pre>
+
+<p>首先我们可以看到，代码变短了。因为少了原来3个方法的定义，也少了相互之间需要传递的变量的封装。</p>
+
+<p>另外，代码变清楚了，虽然是异步的代码，但是它们被 GCD 合理的整合在一起，逻辑非常清晰。如果应用上 MVC 模式，我们也可以将 View Controller 层的回调函数用 GCD 的方式传递给 Modal 层，这相比以前用 @selector 的方式，代码的逻辑关系会更加清楚。</p>
+
+<h2>GCD的定义</h2>
+
+<p>简单 GCD 的定义有点象函数指针，差别是用 ^ 替代了函数指针的 * 号，如下所示：</p>
+
+<pre><code class="objc">// 申明变量
+ (void) (^loggerBlock)(void);
+ // 定义
+
+ loggerBlock = ^{
+      NSLog(@"Hello world");
+ };
+ // 调用
+ loggerBlock();
+</code></pre>
+
+<p>但是大多数时候，我们通常使用内联的方式来定义它，即将它的程序块写在调用的函数里面，例如这样：</p>
+
+<pre><code class="objc">dispatch_async(dispatch_get_global_queue(0, 0), ^{
+      // something
+ });
+</code></pre>
+
+<p>从上面大家可以看出，block 有如下特点：</p>
+
+<ol>
+<li>程序块可以在代码中以内联的方式来定义。</li>
+<li>程序块可以访问在创建它的范围内的可用的变量。</li>
+</ol>
+
+
+<h2>系统提供的 dispatch 方法</h2>
+
+<p>为了方便地使用 GCD，苹果提供了一些方法方便我们将 block 放在主线程或后台线程执行，或者延后执行。使用的例子如下：</p>
+
+<pre><code class="objc">//  后台执行：
+ dispatch_async(dispatch_get_global_queue(0, 0), ^{
+      // something
+ });
+ // 主线程执行：
+ dispatch_async(dispatch_get_main_queue(), ^{
+      // something
+ });
+ // 一次性执行：
+ static dispatch_once_t onceToken;
+ dispatch_once(&amp;onceToken, ^{
+     // code to be executed once
+ });
+ // 延迟2秒执行：
+ double delayInSeconds = 2.0;
+ dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
+ dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+     // code to be executed on the main queue after delay
+ });
+</code></pre>
+
+<p>dispatch_queue_t 也可以自己定义，如要要自定义 queue，可以用 dispatch_queue_create 方法，示例如下：</p>
+
+<pre><code class="objc">dispatch_queue_t urls_queue = dispatch_queue_create("blog.devtang.com", NULL);
+dispatch_async(urls_queue, ^{
+     // your code
+});
+dispatch_release(urls_queue);
+</code></pre>
+
+<p>另外，GCD 还有一些高级用法，例如让后台2个线程并行执行，然后等2个线程都结束后，再汇总执行结果。这个可以用 dispatch_group, dispatch_group_async 和 dispatch_group_notify 来实现，示例如下：</p>
+
+<pre><code class="objc">dispatch_group_t group = dispatch_group_create();
+ dispatch_group_async(group, dispatch_get_global_queue(0,0), ^{
+      // 并行执行的线程一
+ });
+ dispatch_group_async(group, dispatch_get_global_queue(0,0), ^{
+      // 并行执行的线程二
+ });
+ dispatch_group_notify(group, dispatch_get_global_queue(0,0), ^{
+      // 汇总结果
+ });
+</code></pre>
+
+<h2>修改block之外的变量</h2>
+
+<p>默认情况下，在程序块中访问的外部变量是复制过去的，即写操作不对原变量生效。但是你可以加上 __block 来让其写操作生效，示例代码如下：</p>
+
+<pre><code class="objc">__block int a = 0;
+ void  (^foo)(void) = ^{
+      a = 1;
+ }
+ foo();
+ // 这里，a的值被修改为1
+</code></pre>
+
+<h2>后台运行</h2>
+
+<p>使用 block 的另一个用处是可以让程序在后台较长久的运行。在以前，当 app 被按 home 键退出后，app 仅有最多5秒钟的时候做一些保存或清理资源的工作。但是应用可以调用UIApplication 的 beginBackgroundTaskWithExpirationHandler 方法，让app最多有 10 分钟的时间在后台长久运行。这个时间可以用来做清理本地缓存，发送统计数据等工作。</p>
+
+<p>让程序在后台长久运行的示例代码如下：</p>
+
+<pre><code class="objc">// AppDelegate.h文件
+@property (assign, nonatomic) UIBackgroundTaskIdentifier backgroundUpdateTask;
+
+// AppDelegate.m文件
+- (void)applicationDidEnterBackground:(UIApplication *)application
+{
+    [self beingBackgroundUpdateTask];
+    // 在这里加上你需要长久运行的代码
+    [self endBackgroundUpdateTask];
+}
+
+- (void)beingBackgroundUpdateTask
+{
+    self.backgroundUpdateTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
+        [self endBackgroundUpdateTask];
+    }];
+}
+
+- (void)endBackgroundUpdateTask
+{
+    [[UIApplication sharedApplication] endBackgroundTask: self.backgroundUpdateTask];
+    self.backgroundUpdateTask = UIBackgroundTaskInvalid;
+}
+</code></pre>
+
+<h2>总结</h2>
+
+<p>总体来说，GCD 能够极大地方便开发者进行多线程编程。大家应该尽量使用 GCD 来处理后台线程和 UI 线程的交互。</p>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[如何在iOS地图上高效的显示大量数据]]></title>

@@ -4,7 +4,7 @@
   <title><![CDATA[O's World]]></title>
   <link href="http://orinchen.github.io/atom.xml" rel="self"/>
   <link href="http://orinchen.github.io/"/>
-  <updated>2014-12-23T14:47:02+08:00</updated>
+  <updated>2014-12-23T16:14:29+08:00</updated>
   <id>http://orinchen.github.io/</id>
   <author>
     <name><![CDATA[Orin Chen]]></name>
@@ -384,7 +384,7 @@
   </entry>
   
   <entry>
-    <title type="html"><![CDATA[谈Objective-C Block的实现]]></title>
+    <title type="html"><![CDATA[谈 Objective-C Block 的实现]]></title>
     <link href="http://orinchen.github.io/blog/2014/03/26/a-look-inside-blocks/"/>
     <updated>2014-03-26T14:09:38+08:00</updated>
     <id>http://orinchen.github.io/blog/2014/03/26/a-look-inside-blocks</id>
