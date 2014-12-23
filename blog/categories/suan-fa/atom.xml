@@ -1,0 +1,482 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: 算法 | O's World]]></title>
+  <link href="http://orinchen.github.io/blog/categories/suan-fa/atom.xml" rel="self"/>
+  <link href="http://orinchen.github.io/"/>
+  <updated>2014-12-23T14:39:05+08:00</updated>
+  <id>http://orinchen.github.io/</id>
+  <author>
+    <name><![CDATA[Orin Chen]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[如何在iOS地图上高效的显示大量数据]]></title>
+    <link href="http://orinchen.github.io/blog/2013/12/28/how-to-handle-large-amounts-of-data-on-maps/"/>
+    <updated>2013-12-28T16:19:52+08:00</updated>
+    <id>http://orinchen.github.io/blog/2013/12/28/how-to-handle-large-amounts-of-data-on-maps</id>
+    <content type="html"><![CDATA[<p>本文由 <a href="http://www.cocoachina.com/bbs/u.php?action=show&amp;uid=178143">崩月姐姐</a> 翻译自 <a href="http://robots.thoughtbot.com/how-to-handle-large-amounts-of-data-on-maps/">How To Efficiently Display Large Amounts of Data on iOS Maps</a></p>
+
+<p>如何在iOS地图上以用户可以理解并乐于接受的方式来处理和显示大量数据。这个教程将会给大家进行示例说明。</p>
+
+<p>我们要开发一款iOS的app应用，这个应用包含有<em>87000</em>个旅馆的信息，每个旅馆的信息中包括有一个坐标值，一个旅馆名跟一个电话号码。这款app可以在用户拖动、放大缩小地图时更新旅馆数据，而不需要用户重新进行搜索。</p>
+
+<p>为了达到这个目的，我们需要构造一个可快速检索的数据结构。<em>C</em>语言的性能高，所以我们用C语言来构造这个数据结构。为了确保大量的数据不会让用户感到迷惑，所以我们还需要想出一个合并数据的解决方案。最后，为了更好的适应市场，我们需要把app做的更完善一些。</p>
+
+<p>完成这个教学后，你将学到这款app的所有核心内容。</p>
+
+<!--more-->
+
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216112620_1.gif"></p>
+
+<h2>数据结构</h2>
+
+<p>首先我们先来分析下数据，搞清我们要如何处理数据。旅馆数据中包含了一系列的坐标点(包括纬度和经度)，我们需要根据这些坐标点在地图上进行标注。地图可以任意的拖动并放大缩小，所以我们不需要把所有的点都全部绘制出来，我们只需要绘制可以显示在屏幕上的点。核心问题是：我们需要查询出显示在屏幕上的所有的点，所以我们要想出一个查找算法，查找存在于一个矩形范围内的所有点。</p>
+
+<p>一个简单的解决方式就是遍历所有的点，然后判断<em>(xMin&lt;=x&lt;=xMax &amp;&amp; yMin&lt;=y&lt;=yMax)</em>，很不幸，这是一个复杂度为<em>O(N)</em>的算法，显然不适合我们的情况。</p>
+
+<p>这儿有个更好的解决方法，就是我们可以利用对称性来减少我们的查询范围。那么如何能通过查询的每一次的迭代来减少查询的范围呢？我们可以在每个区域内都加索引，这样可以有效减少查询的范围。这种区域索引的方式可以用四叉树来实现，查询复杂度为<em>O(H)</em>(H是查询的那个点所在的树的高度)</p>
+
+<h2>四叉树</h2>
+
+<p>四叉树是一个数据结构，由一系列的结点(node)构成。每个结点包含一个桶(bucket)跟一个包围框(boundingbox)。每个桶里面有一系列的点(point)。如果一个点包含在一个外包围框A中，就会被添加到A所在结点的桶(bucket)中。一旦这个结点的桶满了，这个结点就会分裂成四个子结点，每个子节点的包围框分别是当前结点包围框的1/4。分裂之后那些本来要放到当前结点桶中的点就都会放到子容器的桶中。</p>
+
+<p>那么我们该如何来对四叉树进行编码呢？</p>
+
+<p>我们先来定义基本的结构：</p>
+
+<pre><code class="obj-c">typedef struct TBQuadTreeNodeData { 
+    double x; 
+    double y; 
+    void* data; 
+} TBQuadTreeNodeData; 
+TBQuadTreeNodeData TBQuadTreeNodeDataMake(double x, double y, void* data); 
+
+typedef struct TBBoundingBox { 
+    double x0; double y0; 
+    double xf; double yf; 
+} TBBoundingBox; 
+TBBoundingBox TBBoundingBoxMake(double x0, double y0, double xf, double yf); 
+
+typedef struct quadTreeNode { 
+    struct quadTreeNode* northWest; 
+    struct quadTreeNode* northEast; 
+    struct quadTreeNode* southWest; 
+    struct quadTreeNode* southEast; 
+    TBBoundingBox boundingBox; 
+    int bucketCapacity; 
+    TBQuadTreeNodeData *points; 
+    int count; 
+} TBQuadTreeNode; 
+TBQuadTreeNode* TBQuadTreeNodeMake(TBBoundingBox boundary, int bucketCapacity); 
+</code></pre>
+
+<p><code>TBQuadTreeNodeData</code>结构包含了坐标点（纬度，经度）。<code>void* data</code>是一个普通的指针，用来存储我们需要的其他信息，如旅馆名跟电话号码。<code>TBBoundingBox</code>代表一个用于范围查询的长方形，也就是之前谈到<em>(xMin&lt;=x&lt;=xMax &amp;&amp; yMin&lt;=y&lt;=yMax)</em>查询的那个长方形。左上角是<em>(xMin,yMin)</em>，右下角是<em>(xMax,yMax)</em>。</p>
+
+<p>最后，我们看下<code>TBQuadTreeNode</code>结构，这个结构包含了四个指针，每个指针分别指向这个结点的四个子节点。它还有一个外包围框和一个数组（数组中就是那个包含一系列坐标点的桶）。</p>
+
+<p>在我们建立完四叉树的同时，空间上的索引也就同时形成了。这是生成四叉树的演示动画。</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216113026_1.gif"></p>
+
+<p>下面的代码准确描述了以上动画的过程：</p>
+
+<pre><code class="obj-c">void TBQuadTreeNodeSubdivide(TBQuadTreeNode* node) 
+{ 
+    TBBoundingBox box = node-&gt;boundingBox; 
+
+    double xMid = (box.xf + box.x0) / 2.0; 
+    double yMid = (box.yf + box.y0) / 2.0; 
+
+    TBBoundingBox northWest = TBBoundingBoxMake(box.x0, box.y0, xMid, yMid); 
+    node-&gt;northWest = TBQuadTreeNodeMake(northWest, node-&gt;bucketCapacity); 
+
+    TBBoundingBox northEast = TBBoundingBoxMake(xMid, box.y0, box.xf, yMid); 
+    node-&gt;northEast = TBQuadTreeNodeMake(northEast, node-&gt;bucketCapacity); 
+
+    TBBoundingBox southWest = TBBoundingBoxMake(box.x0, yMid, xMid, box.yf); 
+    node-&gt;southWest = TBQuadTreeNodeMake(southWest, node-&gt;bucketCapacity); 
+
+    TBBoundingBox southEast = TBBoundingBoxMake(xMid, yMid, box.xf, box.yf); 
+    node-&gt;southEast = TBQuadTreeNodeMake(southEast, node-&gt;bucketCapacity); 
+} 
+
+bool TBQuadTreeNodeInsertData(TBQuadTreeNode* node, TBQuadTreeNodeData data) 
+{ 
+    // Bail if our coordinate is not in the boundingBox 
+    if (!TBBoundingBoxContainsData(node-&gt;boundingBox, data)) { 
+        return false; 
+    } 
+
+    // Add the coordinate to the points array 
+    if (node-&gt;count &lt; node-&gt;bucketCapacity) { 
+        node-&gt;points[node-&gt;count++] = data; 
+        return true; 
+    } 
+
+    // Check to see if the current node is a leaf, if it is, split 
+    if (node-&gt;northWest == NULL) { 
+        TBQuadTreeNodeSubdivide(node); 
+    } 
+
+    // Traverse the tree 
+    if (TBQuadTreeNodeInsertData(node-&gt;northWest, data)) return true; 
+    if (TBQuadTreeNodeInsertData(node-&gt;northEast, data)) return true; 
+    if (TBQuadTreeNodeInsertData(node-&gt;southWest, data)) return true; 
+    if (TBQuadTreeNodeInsertData(node-&gt;southEast, data)) return true; 
+
+    return false; 
+} 
+</code></pre>
+
+<p>现在我们已经完成了四叉树的构造，我们还需要在四叉树上进行区域范围查询并返回<code>TBQuadTreeNodeData</code>结构。以下是区域范围查询的演示动画，在浅蓝区域内的是所有的标注点。当标注点被查询到在指定的区域范围内，则会被标注为绿色。</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216180218_1.gif"></p>
+
+<p>以下是查询代码：</p>
+
+<pre><code class="obj-c">typedef void(^TBDataReturnBlock)(TBQuadTreeNodeData data); 
+
+void TBQuadTreeGatherDataInRange(TBQuadTreeNode* node, TBBoundingBox range, TBDataReturnBlock block) 
+{ 
+    // If range is not contained in the node's boundingBox then bail 
+    if (!TBBoundingBoxIntersectsBoundingBox(node-&gt;boundingBox, range)) { 
+        return; 
+    } 
+
+    for (int i = 0; i &lt; node-&gt;count; i++) { 
+        // Gather points contained in range 
+        if (TBBoundingBoxContainsData(range, node-&gt;points[i])) { 
+            block(node-&gt;points[i]); 
+        } 
+    } 
+
+    // Bail if node is leaf 
+    if (node-&gt;northWest == NULL) { 
+        return; 
+    } 
+
+    // Otherwise traverse down the tree 
+    TBQuadTreeGatherDataInRange(node-&gt;northWest, range, block); 
+    TBQuadTreeGatherDataInRange(node-&gt;northEast, range, block); 
+    TBQuadTreeGatherDataInRange(node-&gt;southWest, range, block); 
+    TBQuadTreeGatherDataInRange(node-&gt;southEast, range, block); 
+} 
+</code></pre>
+
+<p>用四叉树这种结构可以进行快速的查询。在一个包含成百上千条数据的数据库中，可以以<em>60fps</em>的速度查询上百条数据。</p>
+
+<h2>用旅馆数据来填充四叉树</h2>
+
+<p>旅馆的数据来自于<a href="http://poiplaza.com/">POIplaza</a>这个网站，而且已经格式化成csv文件。我们要从硬盘中读取出数据并对数据进行转换，最后用数据来填充四叉树。</p>
+
+<p>创建四叉树的代码在<code>TBCoordinateQuadTree</code>类中：</p>
+
+<pre><code class="obj-c">typedef struct TBHotelInfo { 
+    char* hotelName; 
+    char* hotelPhoneNumber; 
+} TBHotelInfo; 
+
+TBQuadTreeNodeData TBDataFromLine(NSString *line) 
+{ 
+    // Example line: 
+    // -80.26262, 25.81015, Everglades Motel, USA-United States, +1 305-888-8797 
+
+    NSArray *components = [line componentsSeparatedByString:@","]; 
+    double latitude = [components[1] doubleValue]; 
+    double longitude = [components[0] doubleValue]; 
+
+    TBHotelInfo* hotelInfo = malloc(sizeof(TBHotelInfo)); 
+
+    NSString *hotelName = [components[2] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]; 
+    hotelInfo-&gt;hotelName = malloc(sizeof(char) * hotelName.length + 1); 
+    strncpy(hotelInfo-&gt;hotelName, [hotelName UTF8String], hotelName.length + 1); 
+
+    NSString *hotelPhoneNumber = [[components lastObject] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]; 
+    hotelInfo-&gt;hotelPhoneNumber = malloc(sizeof(char) * hotelPhoneNumber.length + 1); 
+    strncpy(hotelInfo-&gt;hotelPhoneNumber, [hotelPhoneNumber UTF8String], hotelPhoneNumber.length + 1); 
+
+    return TBQuadTreeNodeDataMake(latitude, longitude, hotelInfo); 
+} 
+
+- (void)buildTree 
+{ 
+    NSString *data = [NSString stringWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"USA-HotelMotel" ofType:@"csv"] encoding:NSASCIIStringEncoding error:nil]; 
+    NSArray *lines = [data componentsSeparatedByString:@"\n"]; 
+
+    NSInteger count = lines.count - 1; 
+
+    TBQuadTreeNodeData *dataArray = malloc(sizeof(TBQuadTreeNodeData) * count); 
+    for (NSInteger i = 0; i &lt; count; i++) { 
+        dataArray[i] = TBDataFromLine(lines[i]); 
+    } 
+
+    TBBoundingBox world = TBBoundingBoxMake(19, -166, 72, -53); 
+    _root = TBQuadTreeBuildWithData(dataArray, count, world, 4); 
+} 
+</code></pre>
+
+<p>现在我们用iPhone上预加载的数据创建了一个四叉树。接下来我们将处理app的下一个部分：合并数据（clustering）。</p>
+
+<h2>合并数据（clustering）</h2>
+
+<p>现在我们有了一个装满旅馆数据的四叉树，可以用来解决合并数据的问题了。首先，让我们来探索下合并数据的原因。我们合并数据是因为我们不想因为数据过于庞大而使用户迷惑。实际上有很多种方式可以解决这个问题。GoogleMaps根据地图的缩放等级（zoomlevel）来显示搜索结果数据中的一部分数据。地图放的越大，就越能清晰的看到更细节的标注，直到你能看到所有有效的标注。我们将采用这种合并数据的方式，只显示出来旅馆的个数，而不在地图上显示出所有的旅馆信息。</p>
+
+<p>最终呈现的标注是一个中心显示旅馆个数的小圆圈。实现的原理跟如何把图片缩小的原理差不多。我们先在地图上画一个格子。每个格子中包含了很多个小单元格，每个小单元格中的所有旅馆数据合并出一个标注。然后通过每个小单元格中所有旅馆的坐标值的平均值来决定合并后这个标注的坐标值。</p>
+
+<p>这是以上处理的演示动画。</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216113354_1.gif"></p>
+
+<p>以下是代码实现过程。在<code>TBCoordinateQuadTree</code>类中添加了一个方法。</p>
+
+<pre><code class="obj-c">- (NSArray *)clusteredAnnotationsWithinMapRect:(MKMapRect)rect withZoomScale:(double)zoomScale 
+{ 
+    double TBCellSize = TBCellSizeForZoomScale(zoomScale); 
+    double scaleFactor = zoomScale / TBCellSize; 
+
+    NSInteger minX = floor(MKMapRectGetMinX(rect) * scaleFactor); 
+    NSInteger maxX = floor(MKMapRectGetMaxX(rect) * scaleFactor); 
+    NSInteger minY = floor(MKMapRectGetMinY(rect) * scaleFactor); 
+    NSInteger maxY = floor(MKMapRectGetMaxY(rect) * scaleFactor); 
+
+    NSMutableArray *clusteredAnnotations = [[NSMutableArray alloc] init]; 
+
+    for (NSInteger x = minX; x &lt;= maxX; x++) { 
+        for (NSInteger y = minY; y &lt;= maxY; y++) { 
+
+            MKMapRect mapRect = MKMapRectMake(x / scaleFactor, y / scaleFactor, 1.0 / scaleFactor, 1.0 / scaleFactor); 
+
+            __block double totalX = 0; 
+            __block double totalY = 0; 
+            __block int count = 0; 
+
+            TBQuadTreeGatherDataInRange(self.root, TBBoundingBoxForMapRect(mapRect), ^(TBQuadTreeNodeData data) { 
+                totalX += data.x; 
+                totalY += data.y; 
+                count++; 
+            }); 
+
+            if (count &gt;= 1) { 
+                CLLocationCoordinate2D coordinate = CLLocationCoordinate2DMake(totalX / count, totalY / count); 
+                TBClusterAnnotation *annotation = [[TBClusterAnnotation alloc] initWithCoordinate:coordinate count:count]; 
+                [clusteredAnnotations addObject:annotation]; 
+            } 
+        } 
+    } 
+
+    return [NSArray arrayWithArray:clusteredAnnotations]; 
+} 
+</code></pre>
+
+<p>上面的方法在指定小单元格大小的前提下合并数据生成了最终的标注。现在我们需要做的就是把这些标注绘制到<em>MKMapView</em>上。首先我们创建一个<em>UIViewController</em>的子类，然后用<em>MKMapView</em>作为它的<em>view</em>视图。在可视区域改变的情况下，我们需要实时更新标注的显示，所以我们要实现<code>mapView:regionDidChangeAnimated:</code>的协议方法。</p>
+
+<pre><code class="obj-c">- (void)mapView:(MKMapView *)mapView regionDidChangeAnimated:(BOOL)animated 
+{ 
+    [[NSOperationQueue new] addOperationWithBlock:^{ 
+        double zoomScale = self.mapView.bounds.size.width / self.mapView.visibleMapRect.size.width; 
+        NSArray *annotations = [self.coordinateQuadTree clusteredAnnotationsWithinMapRect:mapView.visibleMapRect withZoomScale:zoomScale]; 
+
+        [self updateMapViewAnnotationsWithAnnotations:annotations]; 
+    }]; 
+}
+</code></pre>
+
+<h1>只添加必要的标注</h1>
+
+<p>在主线程中我们期望尽可能花费较少时间来做运算，这意味着我们要尽可能的把所有内容都放到后台的线程中。为了在主线程中花费更少的时间来做计算，我们只需要绘制一些必要的标注。这可以避免用户滑动过程中感到很卡，从而保证流畅的用户体验。</p>
+
+<p>开始之前，我们看一下下面的图片：</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216113807_1.jpg"></p>
+
+<p>左边的屏幕截图是地图进行滑动前的地图快照。这个快照中的标注就是目前mapView中的标注，我们称这个为“before集合”。</p>
+
+<p>右边的屏幕截图是地图进行滑动后的地图快照。这个快照中的标注就是从<code>clusteredAnnotationsWithinMapRect:withZoomScale:</code>这个函数中得到的返回值。我们称这个为“after集合”。</p>
+
+<p>我们期望保留两个快照中都存在的标注点（即重合的那些标注点），去除在“after集合”中不存在的那些标注点，同时添加那些新的标注点。</p>
+
+<pre><code class="obj-c">- (void)updateMapViewAnnotationsWithAnnotations:(NSArray *)annotations 
+{ 
+    NSMutableSet *before = [NSMutableSet setWithArray:self.mapView.annotations]; 
+    NSSet *after = [NSSet setWithArray:annotations]; 
+
+    // Annotations circled in blue shared by both sets 
+    NSMutableSet *toKeep = [NSMutableSet setWithSet:before]; 
+    [toKeep intersectSet:after]; 
+
+    // Annotations circled in green 
+    NSMutableSet *toAdd = [NSMutableSet setWithSet:after]; 
+    [toAdd minusSet:toKeep]; 
+
+    // Annotations circled in red 
+    NSMutableSet *toRemove = [NSMutableSet setWithSet:before]; 
+    [toRemove minusSet:after]; 
+
+    // These two methods must be called on the main thread 
+    [[NSOperationQueue mainQueue] addOperationWithBlock:^{ 
+        [self.mapView addAnnotations:[toAdd allObjects]]; 
+        [self.mapView removeAnnotations:[toRemove allObjects]]; 
+    }]; 
+} 
+</code></pre>
+
+<p>这样我们尽可能的确保在主线程上做少量的工作，从而提升地图滑动的流畅性。</p>
+
+<p>接下来我们来看下如何绘制标注，并且在标注上显示出来旅馆的个数。最后我们给标注加上点击事件，这样使得app从头到脚都可以表现的非常完美。</p>
+
+<p>绘制标注
+由于我们在地图上并没有完全显示出全部旅馆，所以我们需要在剩余的这些标注上表现出真实的旅馆总量。</p>
+
+<p>首先创建一个圆形的标注，中间显示合并后的个数，也就是旅馆的真实总量。这个圆形的大小同样可以反映出合并后的个数。</p>
+
+<p>为了实现这个需求，我们要找出一个方程式，允许我们在1到500+的数值中生成一个缩小后的数值。用这个数值来作为标注的大小。我们将用到以下的方程式。</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216114009_1.png"></p>
+
+<p>x值较低的时候f(x)增长的比较快，x在值变大的时候f(x)增长变缓慢，β值用来控制f(x)趋于1的速度。α值影响最小值（在我们的项目中，我们的最小合并值（也就是1）能占总共最大值的60%）。</p>
+
+<pre><code class="obj-c">static CGFloat const TBScaleFactorAlpha = 0.3; 
+static CGFloat const TBScaleFactorBeta = 0.4; 
+
+CGFloat TBScaledValueForValue(CGFloat value) 
+{ 
+    return 1.0 / (1.0 + expf(-1 * TBScaleFactorAlpha * powf(value, TBScaleFactorBeta))); 
+} 
+
+- (void)setCount:(NSUInteger)count 
+{ 
+    _count = count; 
+
+    // Our max size is (44,44) 
+    CGRect newBounds = CGRectMake(0, 0, roundf(44 * TBScaledValueForValue(count)), roundf(44 * TBScaledValueForValue(count))); 
+    self.frame = TBCenterRect(newBounds, self.center); 
+
+    CGRect newLabelBounds = CGRectMake(0, 0, newBounds.size.width / 1.3, newBounds.size.height / 1.3); 
+    self.countLabel.frame = TBCenterRect(newLabelBounds, TBRectCenter(newBounds)); 
+    self.countLabel.text = [@(_count) stringValue]; 
+
+    [self setNeedsDisplay]; 
+} 
+</code></pre>
+
+<p>现在标注的大小已经OK了。让我们再来把这个标注做漂亮些。</p>
+
+<pre><code class="obj-c">- (void)setupLabel 
+{ 
+    _countLabel = [[UILabel alloc] initWithFrame:self.frame]; 
+    _countLabel.backgroundColor = [UIColor clearColor]; 
+    _countLabel.textColor = [UIColor whiteColor]; 
+    _countLabel.textAlignment = NSTextAlignmentCenter; 
+    _countLabel.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.75]; 
+    _countLabel.shadowOffset = CGSizeMake(0, -1); 
+    _countLabel.adjustsFontSizeToFitWidth = YES; 
+    _countLabel.numberOfLines = 1; 
+    _countLabel.font = [UIFont boldSystemFontOfSize:12]; 
+    _countLabel.baselineAdjustment = UIBaselineAdjustmentAlignCenters; 
+    [self addSubview:_countLabel]; 
+} 
+
+- (void)drawRect:(CGRect)rect 
+{ 
+    CGContextRef context = UIGraphicsGetCurrentContext(); 
+
+    CGContextSetAllowsAntialiasing(context, true); 
+
+    UIColor *outerCircleStrokeColor = [UIColor colorWithWhite:0 alpha:0.25]; 
+    UIColor *innerCircleStrokeColor = [UIColor whiteColor]; 
+    UIColor *innerCircleFillColor = [UIColor colorWithRed:(255.0 / 255.0) green:(95 / 255.0) blue:(42 / 255.0) alpha:1.0]; 
+
+    CGRect circleFrame = CGRectInset(rect, 4, 4); 
+
+    [outerCircleStrokeColor setStroke]; 
+    CGContextSetLineWidth(context, 5.0); 
+    CGContextStrokeEllipseInRect(context, circleFrame); 
+
+    [innerCircleStrokeColor setStroke]; 
+    CGContextSetLineWidth(context, 4); 
+    CGContextStrokeEllipseInRect(context, circleFrame); 
+
+    [innerCircleFillColor setFill]; 
+    CGContextFillEllipseInRect(context, circleFrame); 
+} 
+</code></pre>
+
+<h2>添加最后的touch事件</h2>
+
+<p>目前的标注可以很好的呈现出我们的数据了，让我们最后添加一些touch事件来让我们的app用起来更有趣。</p>
+
+<p>首先，我们需要为新添加到地图上的标注做一个动画。如果没有添加动画的话，新的标注就会在地图上突然出现，体验效果将会大打折扣。</p>
+
+<pre><code class="obj-c">- (void)addBounceAnnimationToView:(UIView *)view 
+{ 
+    CAKeyframeAnimation *bounceAnimation = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"]; 
+
+    bounceAnimation.values = @[@(0.05), @(1.1), @(0.9), @(1)]; 
+
+    bounceAnimation.duration = 0.6; 
+    NSMutableArray *timingFunctions = [[NSMutableArray alloc] init]; 
+    for (NSInteger i = 0; i &lt; 4; i++) { 
+        [timingFunctions addObject:[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut]]; 
+    } 
+    [bounceAnimation setTimingFunctions:timingFunctions.copy]; 
+    bounceAnimation.removedOnCompletion = NO; 
+
+    [view.layer addAnimation:bounceAnimation forKey:@"bounce"]; 
+} 
+
+- (void)mapView:(MKMapView *)mapView didAddAnnotationViews:(NSArray *)views 
+{ 
+    for (UIView *view in views) { 
+        [self addBounceAnnimationToView:view]; 
+    } 
+} 
+</code></pre>
+
+<p>接下来，我们想要根据地图的缩放比例来改变在合并时的小单元格（cell）的大小。在地图进行放大时，小单元格变小。所以我们需要定义一下当前地图的缩放比例。也就是<code>scale=mapView.bounds.size.width/mapView.visibleMapRect.size.width</code>:</p>
+
+<pre><code class="obj-c">NSInteger TBZoomScaleToZoomLevel(MKZoomScale scale) 
+{ 
+    double totalTilesAtMaxZoom = MKMapSizeWorld.width / 256.0; 
+    NSInteger zoomLevelAtMaxZoom = log2(totalTilesAtMaxZoom); 
+    NSInteger zoomLevel = MAX(0, zoomLevelAtMaxZoom + floor(log2f(scale) + 0.5)); 
+
+    return zoomLevel; 
+} 
+</code></pre>
+
+<p>我们为每个地图缩放的比例都定义一个常量。</p>
+
+<pre><code class="obj-c">float TBCellSizeForZoomScale(MKZoomScale zoomScale) 
+{ 
+    NSInteger zoomLevel = TBZoomScaleToZoomLevel(zoomScale); 
+
+    switch (zoomLevel) { 
+        case 13: 
+        case 14: 
+        case 15: 
+            return 64; 
+        case 16: 
+        case 17: 
+        case 18: 
+            return 32; 
+        case 19: 
+            return 16; 
+
+        default: 
+            return 88; 
+    } 
+} 
+</code></pre>
+
+<p>现在我们放大地图，我们将看到逐渐变小的标注，直到最后我们能看到代表每个旅馆的那个标注。</p>
+
+<p><a href="https://github.com/thoughtbot/TBAnnotationClustering">完整源代码在这里</a></p>
+]]></content>
+  </entry>
+  
+</feed>

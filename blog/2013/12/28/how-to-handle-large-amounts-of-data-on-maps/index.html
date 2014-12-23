@@ -1,0 +1,1050 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>如何在iOS地图上高效的显示大量数据 - O&#8217;s World</title>
+  <meta name="author" content="Orin Chen">
+
+  
+  <meta name="description" content="本文由 崩月姐姐 翻译自 How To Efficiently Display Large Amounts of Data on iOS Maps 如何在iOS地图上以用户可以理解并乐于接受的方式来处理和显示大量数据。这个教程将会给大家进行示例说明。 我们要开发一款iOS的app应用， &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://orinchen.github.io/blog/2013/12/28/how-to-handle-large-amounts-of-data-on-maps">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="O's World" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="/javascripts/libs/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href='http://fonts.googleapis.com/css?family=Delius' rel='stylesheet' type='text/css'>
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">O&#8217;s World</a></h1>
+  
+    <h2>努力！奋斗！</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="sitesearch" value="orinchen.github.io">
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">如何在iOS地图上高效的显示大量数据</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2013-12-28T16:19:52+08:00'><span class='date'><span class='date-month'>Dec</span> <span class='date-day'>28</span><span class='date-suffix'>th</span>, <span class='date-year'>2013</span></span> <span class='time'>4:19 pm</span></time>
+        
+           | <a href="#disqus_thread"
+             data-disqus-identifier="http://orinchen.github.io">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><p>本文由 <a href="http://www.cocoachina.com/bbs/u.php?action=show&amp;uid=178143">崩月姐姐</a> 翻译自 <a href="http://robots.thoughtbot.com/how-to-handle-large-amounts-of-data-on-maps/">How To Efficiently Display Large Amounts of Data on iOS Maps</a></p>
+
+<p>如何在iOS地图上以用户可以理解并乐于接受的方式来处理和显示大量数据。这个教程将会给大家进行示例说明。</p>
+
+<p>我们要开发一款iOS的app应用，这个应用包含有<em>87000</em>个旅馆的信息，每个旅馆的信息中包括有一个坐标值，一个旅馆名跟一个电话号码。这款app可以在用户拖动、放大缩小地图时更新旅馆数据，而不需要用户重新进行搜索。</p>
+
+<p>为了达到这个目的，我们需要构造一个可快速检索的数据结构。<em>C</em>语言的性能高，所以我们用C语言来构造这个数据结构。为了确保大量的数据不会让用户感到迷惑，所以我们还需要想出一个合并数据的解决方案。最后，为了更好的适应市场，我们需要把app做的更完善一些。</p>
+
+<p>完成这个教学后，你将学到这款app的所有核心内容。</p>
+
+<!--more-->
+
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216112620_1.gif"></p>
+
+<h2>数据结构</h2>
+
+<p>首先我们先来分析下数据，搞清我们要如何处理数据。旅馆数据中包含了一系列的坐标点(包括纬度和经度)，我们需要根据这些坐标点在地图上进行标注。地图可以任意的拖动并放大缩小，所以我们不需要把所有的点都全部绘制出来，我们只需要绘制可以显示在屏幕上的点。核心问题是：我们需要查询出显示在屏幕上的所有的点，所以我们要想出一个查找算法，查找存在于一个矩形范围内的所有点。</p>
+
+<p>一个简单的解决方式就是遍历所有的点，然后判断<em>(xMin&lt;=x&lt;=xMax &amp;&amp; yMin&lt;=y&lt;=yMax)</em>，很不幸，这是一个复杂度为<em>O(N)</em>的算法，显然不适合我们的情况。</p>
+
+<p>这儿有个更好的解决方法，就是我们可以利用对称性来减少我们的查询范围。那么如何能通过查询的每一次的迭代来减少查询的范围呢？我们可以在每个区域内都加索引，这样可以有效减少查询的范围。这种区域索引的方式可以用四叉树来实现，查询复杂度为<em>O(H)</em>(H是查询的那个点所在的树的高度)</p>
+
+<h2>四叉树</h2>
+
+<p>四叉树是一个数据结构，由一系列的结点(node)构成。每个结点包含一个桶(bucket)跟一个包围框(boundingbox)。每个桶里面有一系列的点(point)。如果一个点包含在一个外包围框A中，就会被添加到A所在结点的桶(bucket)中。一旦这个结点的桶满了，这个结点就会分裂成四个子结点，每个子节点的包围框分别是当前结点包围框的1/4。分裂之后那些本来要放到当前结点桶中的点就都会放到子容器的桶中。</p>
+
+<p>那么我们该如何来对四叉树进行编码呢？</p>
+
+<p>我们先来定义基本的结构：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">TBQuadTreeNodeData</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">x</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">y</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">void</span><span class="o">*</span> <span class="n">data</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span> <span class="n">TBQuadTreeNodeData</span><span class="p">;</span>
+</span><span class='line'><span class="n">TBQuadTreeNodeData</span> <span class="nf">TBQuadTreeNodeDataMake</span><span class="p">(</span><span class="kt">double</span> <span class="n">x</span><span class="p">,</span> <span class="kt">double</span> <span class="n">y</span><span class="p">,</span> <span class="kt">void</span><span class="o">*</span> <span class="n">data</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">TBBoundingBox</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">x0</span><span class="p">;</span> <span class="kt">double</span> <span class="n">y0</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">xf</span><span class="p">;</span> <span class="kt">double</span> <span class="n">yf</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span> <span class="n">TBBoundingBox</span><span class="p">;</span>
+</span><span class='line'><span class="n">TBBoundingBox</span> <span class="nf">TBBoundingBoxMake</span><span class="p">(</span><span class="kt">double</span> <span class="n">x0</span><span class="p">,</span> <span class="kt">double</span> <span class="n">y0</span><span class="p">,</span> <span class="kt">double</span> <span class="n">xf</span><span class="p">,</span> <span class="kt">double</span> <span class="n">yf</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">quadTreeNode</span> <span class="p">{</span>
+</span><span class='line'>    <span class="k">struct</span> <span class="n">quadTreeNode</span><span class="o">*</span> <span class="n">northWest</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">struct</span> <span class="n">quadTreeNode</span><span class="o">*</span> <span class="n">northEast</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">struct</span> <span class="n">quadTreeNode</span><span class="o">*</span> <span class="n">southWest</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">struct</span> <span class="n">quadTreeNode</span><span class="o">*</span> <span class="n">southEast</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">TBBoundingBox</span> <span class="n">boundingBox</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">bucketCapacity</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">TBQuadTreeNodeData</span> <span class="o">*</span><span class="n">points</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">int</span> <span class="n">count</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span> <span class="n">TBQuadTreeNode</span><span class="p">;</span>
+</span><span class='line'><span class="n">TBQuadTreeNode</span><span class="o">*</span> <span class="nf">TBQuadTreeNodeMake</span><span class="p">(</span><span class="n">TBBoundingBox</span> <span class="n">boundary</span><span class="p">,</span> <span class="kt">int</span> <span class="n">bucketCapacity</span><span class="p">);</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p><code>TBQuadTreeNodeData</code>结构包含了坐标点（纬度，经度）。<code>void* data</code>是一个普通的指针，用来存储我们需要的其他信息，如旅馆名跟电话号码。<code>TBBoundingBox</code>代表一个用于范围查询的长方形，也就是之前谈到<em>(xMin&lt;=x&lt;=xMax &amp;&amp; yMin&lt;=y&lt;=yMax)</em>查询的那个长方形。左上角是<em>(xMin,yMin)</em>，右下角是<em>(xMax,yMax)</em>。</p>
+
+<p>最后，我们看下<code>TBQuadTreeNode</code>结构，这个结构包含了四个指针，每个指针分别指向这个结点的四个子节点。它还有一个外包围框和一个数组（数组中就是那个包含一系列坐标点的桶）。</p>
+
+<p>在我们建立完四叉树的同时，空间上的索引也就同时形成了。这是生成四叉树的演示动画。</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216113026_1.gif"></p>
+
+<p>下面的代码准确描述了以上动画的过程：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="kt">void</span> <span class="nf">TBQuadTreeNodeSubdivide</span><span class="p">(</span><span class="n">TBQuadTreeNode</span><span class="o">*</span> <span class="n">node</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="n">TBBoundingBox</span> <span class="n">box</span> <span class="o">=</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">boundingBox</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">xMid</span> <span class="o">=</span> <span class="p">(</span><span class="n">box</span><span class="p">.</span><span class="n">xf</span> <span class="o">+</span> <span class="n">box</span><span class="p">.</span><span class="n">x0</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">yMid</span> <span class="o">=</span> <span class="p">(</span><span class="n">box</span><span class="p">.</span><span class="n">yf</span> <span class="o">+</span> <span class="n">box</span><span class="p">.</span><span class="n">y0</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">TBBoundingBox</span> <span class="n">northWest</span> <span class="o">=</span> <span class="n">TBBoundingBoxMake</span><span class="p">(</span><span class="n">box</span><span class="p">.</span><span class="n">x0</span><span class="p">,</span> <span class="n">box</span><span class="p">.</span><span class="n">y0</span><span class="p">,</span> <span class="n">xMid</span><span class="p">,</span> <span class="n">yMid</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">node</span><span class="o">-&gt;</span><span class="n">northWest</span> <span class="o">=</span> <span class="n">TBQuadTreeNodeMake</span><span class="p">(</span><span class="n">northWest</span><span class="p">,</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">bucketCapacity</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">TBBoundingBox</span> <span class="n">northEast</span> <span class="o">=</span> <span class="n">TBBoundingBoxMake</span><span class="p">(</span><span class="n">xMid</span><span class="p">,</span> <span class="n">box</span><span class="p">.</span><span class="n">y0</span><span class="p">,</span> <span class="n">box</span><span class="p">.</span><span class="n">xf</span><span class="p">,</span> <span class="n">yMid</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">node</span><span class="o">-&gt;</span><span class="n">northEast</span> <span class="o">=</span> <span class="n">TBQuadTreeNodeMake</span><span class="p">(</span><span class="n">northEast</span><span class="p">,</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">bucketCapacity</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">TBBoundingBox</span> <span class="n">southWest</span> <span class="o">=</span> <span class="n">TBBoundingBoxMake</span><span class="p">(</span><span class="n">box</span><span class="p">.</span><span class="n">x0</span><span class="p">,</span> <span class="n">yMid</span><span class="p">,</span> <span class="n">xMid</span><span class="p">,</span> <span class="n">box</span><span class="p">.</span><span class="n">yf</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">node</span><span class="o">-&gt;</span><span class="n">southWest</span> <span class="o">=</span> <span class="n">TBQuadTreeNodeMake</span><span class="p">(</span><span class="n">southWest</span><span class="p">,</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">bucketCapacity</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">TBBoundingBox</span> <span class="n">southEast</span> <span class="o">=</span> <span class="n">TBBoundingBoxMake</span><span class="p">(</span><span class="n">xMid</span><span class="p">,</span> <span class="n">yMid</span><span class="p">,</span> <span class="n">box</span><span class="p">.</span><span class="n">xf</span><span class="p">,</span> <span class="n">box</span><span class="p">.</span><span class="n">yf</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">node</span><span class="o">-&gt;</span><span class="n">southEast</span> <span class="o">=</span> <span class="n">TBQuadTreeNodeMake</span><span class="p">(</span><span class="n">southEast</span><span class="p">,</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">bucketCapacity</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">bool</span> <span class="nf">TBQuadTreeNodeInsertData</span><span class="p">(</span><span class="n">TBQuadTreeNode</span><span class="o">*</span> <span class="n">node</span><span class="p">,</span> <span class="n">TBQuadTreeNodeData</span> <span class="n">data</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="c1">// Bail if our coordinate is not in the boundingBox </span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">TBBoundingBoxContainsData</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">boundingBox</span><span class="p">,</span> <span class="n">data</span><span class="p">))</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">return</span> <span class="nb">false</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// Add the coordinate to the points array </span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">count</span> <span class="o">&lt;</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">bucketCapacity</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="n">node</span><span class="o">-&gt;</span><span class="n">points</span><span class="p">[</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">count</span><span class="o">++</span><span class="p">]</span> <span class="o">=</span> <span class="n">data</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// Check to see if the current node is a leaf, if it is, split </span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">northWest</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="n">TBQuadTreeNodeSubdivide</span><span class="p">(</span><span class="n">node</span><span class="p">);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// Traverse the tree </span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">TBQuadTreeNodeInsertData</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">northWest</span><span class="p">,</span> <span class="n">data</span><span class="p">))</span> <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">TBQuadTreeNodeInsertData</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">northEast</span><span class="p">,</span> <span class="n">data</span><span class="p">))</span> <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">TBQuadTreeNodeInsertData</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">southWest</span><span class="p">,</span> <span class="n">data</span><span class="p">))</span> <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">TBQuadTreeNodeInsertData</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">southEast</span><span class="p">,</span> <span class="n">data</span><span class="p">))</span> <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="nb">false</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>现在我们已经完成了四叉树的构造，我们还需要在四叉树上进行区域范围查询并返回<code>TBQuadTreeNodeData</code>结构。以下是区域范围查询的演示动画，在浅蓝区域内的是所有的标注点。当标注点被查询到在指定的区域范围内，则会被标注为绿色。</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216180218_1.gif"></p>
+
+<p>以下是查询代码：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="k">typedef</span> <span class="nf">void</span><span class="p">(</span><span class="o">^</span><span class="n">TBDataReturnBlock</span><span class="p">)(</span><span class="n">TBQuadTreeNodeData</span> <span class="n">data</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'><span class="kt">void</span> <span class="nf">TBQuadTreeGatherDataInRange</span><span class="p">(</span><span class="n">TBQuadTreeNode</span><span class="o">*</span> <span class="n">node</span><span class="p">,</span> <span class="n">TBBoundingBox</span> <span class="n">range</span><span class="p">,</span> <span class="n">TBDataReturnBlock</span> <span class="n">block</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="c1">// If range is not contained in the node&#39;s boundingBox then bail </span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">TBBoundingBoxIntersectsBoundingBox</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">boundingBox</span><span class="p">,</span> <span class="n">range</span><span class="p">))</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">return</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">count</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="c1">// Gather points contained in range </span>
+</span><span class='line'>        <span class="k">if</span> <span class="p">(</span><span class="n">TBBoundingBoxContainsData</span><span class="p">(</span><span class="n">range</span><span class="p">,</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">points</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span> <span class="p">{</span>
+</span><span class='line'>            <span class="n">block</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">points</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// Bail if node is leaf </span>
+</span><span class='line'>    <span class="k">if</span> <span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">northWest</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">return</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// Otherwise traverse down the tree </span>
+</span><span class='line'>    <span class="n">TBQuadTreeGatherDataInRange</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">northWest</span><span class="p">,</span> <span class="n">range</span><span class="p">,</span> <span class="n">block</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">TBQuadTreeGatherDataInRange</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">northEast</span><span class="p">,</span> <span class="n">range</span><span class="p">,</span> <span class="n">block</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">TBQuadTreeGatherDataInRange</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">southWest</span><span class="p">,</span> <span class="n">range</span><span class="p">,</span> <span class="n">block</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">TBQuadTreeGatherDataInRange</span><span class="p">(</span><span class="n">node</span><span class="o">-&gt;</span><span class="n">southEast</span><span class="p">,</span> <span class="n">range</span><span class="p">,</span> <span class="n">block</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>用四叉树这种结构可以进行快速的查询。在一个包含成百上千条数据的数据库中，可以以<em>60fps</em>的速度查询上百条数据。</p>
+
+<h2>用旅馆数据来填充四叉树</h2>
+
+<p>旅馆的数据来自于<a href="http://poiplaza.com/">POIplaza</a>这个网站，而且已经格式化成csv文件。我们要从硬盘中读取出数据并对数据进行转换，最后用数据来填充四叉树。</p>
+
+<p>创建四叉树的代码在<code>TBCoordinateQuadTree</code>类中：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="n">TBHotelInfo</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">char</span><span class="o">*</span> <span class="n">hotelName</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">char</span><span class="o">*</span> <span class="n">hotelPhoneNumber</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span> <span class="n">TBHotelInfo</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">TBQuadTreeNodeData</span> <span class="nf">TBDataFromLine</span><span class="p">(</span><span class="bp">NSString</span> <span class="o">*</span><span class="n">line</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="c1">// Example line: </span>
+</span><span class='line'>    <span class="c1">// -80.26262, 25.81015, Everglades Motel, USA-United States, +1 305-888-8797 </span>
+</span><span class='line'>
+</span><span class='line'>    <span class="bp">NSArray</span> <span class="o">*</span><span class="n">components</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span> <span class="nl">componentsSeparatedByString</span><span class="p">:</span><span class="s">@&quot;,&quot;</span><span class="p">];</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">latitude</span> <span class="o">=</span> <span class="p">[</span><span class="n">components</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="n">doubleValue</span><span class="p">];</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">longitude</span> <span class="o">=</span> <span class="p">[</span><span class="n">components</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="n">doubleValue</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">TBHotelInfo</span><span class="o">*</span> <span class="n">hotelInfo</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">TBHotelInfo</span><span class="p">));</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="bp">NSString</span> <span class="o">*</span><span class="n">hotelName</span> <span class="o">=</span> <span class="p">[</span><span class="n">components</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="nl">stringByTrimmingCharactersInSet</span><span class="p">:[</span><span class="bp">NSCharacterSet</span> <span class="n">whitespaceAndNewlineCharacterSet</span><span class="p">]];</span>
+</span><span class='line'>    <span class="n">hotelInfo</span><span class="o">-&gt;</span><span class="n">hotelName</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">char</span><span class="p">)</span> <span class="o">*</span> <span class="n">hotelName</span><span class="p">.</span><span class="n">length</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">strncpy</span><span class="p">(</span><span class="n">hotelInfo</span><span class="o">-&gt;</span><span class="n">hotelName</span><span class="p">,</span> <span class="p">[</span><span class="n">hotelName</span> <span class="n">UTF8String</span><span class="p">],</span> <span class="n">hotelName</span><span class="p">.</span><span class="n">length</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="bp">NSString</span> <span class="o">*</span><span class="n">hotelPhoneNumber</span> <span class="o">=</span> <span class="p">[[</span><span class="n">components</span> <span class="n">lastObject</span><span class="p">]</span> <span class="nl">stringByTrimmingCharactersInSet</span><span class="p">:[</span><span class="bp">NSCharacterSet</span> <span class="n">whitespaceAndNewlineCharacterSet</span><span class="p">]];</span>
+</span><span class='line'>    <span class="n">hotelInfo</span><span class="o">-&gt;</span><span class="n">hotelPhoneNumber</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">char</span><span class="p">)</span> <span class="o">*</span> <span class="n">hotelPhoneNumber</span><span class="p">.</span><span class="n">length</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">strncpy</span><span class="p">(</span><span class="n">hotelInfo</span><span class="o">-&gt;</span><span class="n">hotelPhoneNumber</span><span class="p">,</span> <span class="p">[</span><span class="n">hotelPhoneNumber</span> <span class="n">UTF8String</span><span class="p">],</span> <span class="n">hotelPhoneNumber</span><span class="p">.</span><span class="n">length</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="n">TBQuadTreeNodeDataMake</span><span class="p">(</span><span class="n">latitude</span><span class="p">,</span> <span class="n">longitude</span><span class="p">,</span> <span class="n">hotelInfo</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="p">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">buildTree</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="bp">NSString</span> <span class="o">*</span><span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="bp">NSString</span> <span class="nl">stringWithContentsOfFile</span><span class="p">:[[</span><span class="bp">NSBundle</span> <span class="n">mainBundle</span><span class="p">]</span> <span class="nl">pathForResource</span><span class="p">:</span><span class="s">@&quot;USA-HotelMotel&quot;</span> <span class="nl">ofType</span><span class="p">:</span><span class="s">@&quot;csv&quot;</span><span class="p">]</span> <span class="nl">encoding</span><span class="p">:</span><span class="n">NSASCIIStringEncoding</span> <span class="nl">error</span><span class="p">:</span><span class="nb">nil</span><span class="p">];</span>
+</span><span class='line'>    <span class="bp">NSArray</span> <span class="o">*</span><span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">data</span> <span class="nl">componentsSeparatedByString</span><span class="p">:</span><span class="s">@&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="bp">NSInteger</span> <span class="n">count</span> <span class="o">=</span> <span class="n">lines</span><span class="p">.</span><span class="n">count</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">TBQuadTreeNodeData</span> <span class="o">*</span><span class="n">dataArray</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">TBQuadTreeNodeData</span><span class="p">)</span> <span class="o">*</span> <span class="n">count</span><span class="p">);</span>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="bp">NSInteger</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">count</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="n">dataArray</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">TBDataFromLine</span><span class="p">(</span><span class="n">lines</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">TBBoundingBox</span> <span class="n">world</span> <span class="o">=</span> <span class="n">TBBoundingBoxMake</span><span class="p">(</span><span class="mi">19</span><span class="p">,</span> <span class="o">-</span><span class="mi">166</span><span class="p">,</span> <span class="mi">72</span><span class="p">,</span> <span class="o">-</span><span class="mi">53</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">_root</span> <span class="o">=</span> <span class="n">TBQuadTreeBuildWithData</span><span class="p">(</span><span class="n">dataArray</span><span class="p">,</span> <span class="n">count</span><span class="p">,</span> <span class="n">world</span><span class="p">,</span> <span class="mi">4</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>现在我们用iPhone上预加载的数据创建了一个四叉树。接下来我们将处理app的下一个部分：合并数据（clustering）。</p>
+
+<h2>合并数据（clustering）</h2>
+
+<p>现在我们有了一个装满旅馆数据的四叉树，可以用来解决合并数据的问题了。首先，让我们来探索下合并数据的原因。我们合并数据是因为我们不想因为数据过于庞大而使用户迷惑。实际上有很多种方式可以解决这个问题。GoogleMaps根据地图的缩放等级（zoomlevel）来显示搜索结果数据中的一部分数据。地图放的越大，就越能清晰的看到更细节的标注，直到你能看到所有有效的标注。我们将采用这种合并数据的方式，只显示出来旅馆的个数，而不在地图上显示出所有的旅馆信息。</p>
+
+<p>最终呈现的标注是一个中心显示旅馆个数的小圆圈。实现的原理跟如何把图片缩小的原理差不多。我们先在地图上画一个格子。每个格子中包含了很多个小单元格，每个小单元格中的所有旅馆数据合并出一个标注。然后通过每个小单元格中所有旅馆的坐标值的平均值来决定合并后这个标注的坐标值。</p>
+
+<p>这是以上处理的演示动画。</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216113354_1.gif"></p>
+
+<p>以下是代码实现过程。在<code>TBCoordinateQuadTree</code>类中添加了一个方法。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="p">-</span> <span class="p">(</span><span class="bp">NSArray</span> <span class="o">*</span><span class="p">)</span><span class="nf">clusteredAnnotationsWithinMapRect:</span><span class="p">(</span><span class="n">MKMapRect</span><span class="p">)</span><span class="nv">rect</span> <span class="nf">withZoomScale:</span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="nv">zoomScale</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">TBCellSize</span> <span class="o">=</span> <span class="n">TBCellSizeForZoomScale</span><span class="p">(</span><span class="n">zoomScale</span><span class="p">);</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">scaleFactor</span> <span class="o">=</span> <span class="n">zoomScale</span> <span class="o">/</span> <span class="n">TBCellSize</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="bp">NSInteger</span> <span class="n">minX</span> <span class="o">=</span> <span class="n">floor</span><span class="p">(</span><span class="n">MKMapRectGetMinX</span><span class="p">(</span><span class="n">rect</span><span class="p">)</span> <span class="o">*</span> <span class="n">scaleFactor</span><span class="p">);</span>
+</span><span class='line'>    <span class="bp">NSInteger</span> <span class="n">maxX</span> <span class="o">=</span> <span class="n">floor</span><span class="p">(</span><span class="n">MKMapRectGetMaxX</span><span class="p">(</span><span class="n">rect</span><span class="p">)</span> <span class="o">*</span> <span class="n">scaleFactor</span><span class="p">);</span>
+</span><span class='line'>    <span class="bp">NSInteger</span> <span class="n">minY</span> <span class="o">=</span> <span class="n">floor</span><span class="p">(</span><span class="n">MKMapRectGetMinY</span><span class="p">(</span><span class="n">rect</span><span class="p">)</span> <span class="o">*</span> <span class="n">scaleFactor</span><span class="p">);</span>
+</span><span class='line'>    <span class="bp">NSInteger</span> <span class="n">maxY</span> <span class="o">=</span> <span class="n">floor</span><span class="p">(</span><span class="n">MKMapRectGetMaxY</span><span class="p">(</span><span class="n">rect</span><span class="p">)</span> <span class="o">*</span> <span class="n">scaleFactor</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="bp">NSMutableArray</span> <span class="o">*</span><span class="n">clusteredAnnotations</span> <span class="o">=</span> <span class="p">[[</span><span class="bp">NSMutableArray</span> <span class="n">alloc</span><span class="p">]</span> <span class="n">init</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="bp">NSInteger</span> <span class="n">x</span> <span class="o">=</span> <span class="n">minX</span><span class="p">;</span> <span class="n">x</span> <span class="o">&lt;=</span> <span class="n">maxX</span><span class="p">;</span> <span class="n">x</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">for</span> <span class="p">(</span><span class="bp">NSInteger</span> <span class="n">y</span> <span class="o">=</span> <span class="n">minY</span><span class="p">;</span> <span class="n">y</span> <span class="o">&lt;=</span> <span class="n">maxY</span><span class="p">;</span> <span class="n">y</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="n">MKMapRect</span> <span class="n">mapRect</span> <span class="o">=</span> <span class="n">MKMapRectMake</span><span class="p">(</span><span class="n">x</span> <span class="o">/</span> <span class="n">scaleFactor</span><span class="p">,</span> <span class="n">y</span> <span class="o">/</span> <span class="n">scaleFactor</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">scaleFactor</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">scaleFactor</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">__block</span> <span class="kt">double</span> <span class="n">totalX</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>            <span class="k">__block</span> <span class="kt">double</span> <span class="n">totalY</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>            <span class="k">__block</span> <span class="kt">int</span> <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="n">TBQuadTreeGatherDataInRange</span><span class="p">(</span><span class="nb">self</span><span class="p">.</span><span class="n">root</span><span class="p">,</span> <span class="n">TBBoundingBoxForMapRect</span><span class="p">(</span><span class="n">mapRect</span><span class="p">),</span> <span class="o">^</span><span class="p">(</span><span class="n">TBQuadTreeNodeData</span> <span class="n">data</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>                <span class="n">totalX</span> <span class="o">+=</span> <span class="n">data</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+</span><span class='line'>                <span class="n">totalY</span> <span class="o">+=</span> <span class="n">data</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+</span><span class='line'>                <span class="n">count</span><span class="o">++</span><span class="p">;</span>
+</span><span class='line'>            <span class="p">});</span>
+</span><span class='line'>
+</span><span class='line'>            <span class="k">if</span> <span class="p">(</span><span class="n">count</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>                <span class="n">CLLocationCoordinate2D</span> <span class="n">coordinate</span> <span class="o">=</span> <span class="n">CLLocationCoordinate2DMake</span><span class="p">(</span><span class="n">totalX</span> <span class="o">/</span> <span class="n">count</span><span class="p">,</span> <span class="n">totalY</span> <span class="o">/</span> <span class="n">count</span><span class="p">);</span>
+</span><span class='line'>                <span class="n">TBClusterAnnotation</span> <span class="o">*</span><span class="n">annotation</span> <span class="o">=</span> <span class="p">[[</span><span class="n">TBClusterAnnotation</span> <span class="n">alloc</span><span class="p">]</span> <span class="nl">initWithCoordinate</span><span class="p">:</span><span class="n">coordinate</span> <span class="nl">count</span><span class="p">:</span><span class="n">count</span><span class="p">];</span>
+</span><span class='line'>                <span class="p">[</span><span class="n">clusteredAnnotations</span> <span class="nl">addObject</span><span class="p">:</span><span class="n">annotation</span><span class="p">];</span>
+</span><span class='line'>            <span class="p">}</span>
+</span><span class='line'>        <span class="p">}</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="p">[</span><span class="bp">NSArray</span> <span class="nl">arrayWithArray</span><span class="p">:</span><span class="n">clusteredAnnotations</span><span class="p">];</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>上面的方法在指定小单元格大小的前提下合并数据生成了最终的标注。现在我们需要做的就是把这些标注绘制到<em>MKMapView</em>上。首先我们创建一个<em>UIViewController</em>的子类，然后用<em>MKMapView</em>作为它的<em>view</em>视图。在可视区域改变的情况下，我们需要实时更新标注的显示，所以我们要实现<code>mapView:regionDidChangeAnimated:</code>的协议方法。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="p">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">mapView:</span><span class="p">(</span><span class="bp">MKMapView</span> <span class="o">*</span><span class="p">)</span><span class="nv">mapView</span> <span class="nf">regionDidChangeAnimated:</span><span class="p">(</span><span class="kt">BOOL</span><span class="p">)</span><span class="nv">animated</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="p">[[</span><span class="bp">NSOperationQueue</span> <span class="n">new</span><span class="p">]</span> <span class="nl">addOperationWithBlock</span><span class="p">:</span><span class="o">^</span><span class="p">{</span>
+</span><span class='line'>        <span class="kt">double</span> <span class="n">zoomScale</span> <span class="o">=</span> <span class="nb">self</span><span class="p">.</span><span class="n">mapView</span><span class="p">.</span><span class="n">bounds</span><span class="p">.</span><span class="n">size</span><span class="p">.</span><span class="n">width</span> <span class="o">/</span> <span class="nb">self</span><span class="p">.</span><span class="n">mapView</span><span class="p">.</span><span class="n">visibleMapRect</span><span class="p">.</span><span class="n">size</span><span class="p">.</span><span class="n">width</span><span class="p">;</span>
+</span><span class='line'>        <span class="bp">NSArray</span> <span class="o">*</span><span class="n">annotations</span> <span class="o">=</span> <span class="p">[</span><span class="nb">self</span><span class="p">.</span><span class="n">coordinateQuadTree</span> <span class="nl">clusteredAnnotationsWithinMapRect</span><span class="p">:</span><span class="n">mapView</span><span class="p">.</span><span class="n">visibleMapRect</span> <span class="nl">withZoomScale</span><span class="p">:</span><span class="n">zoomScale</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="p">[</span><span class="nb">self</span> <span class="nl">updateMapViewAnnotationsWithAnnotations</span><span class="p">:</span><span class="n">annotations</span><span class="p">];</span>
+</span><span class='line'>    <span class="p">}];</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h1>只添加必要的标注</h1>
+
+<p>在主线程中我们期望尽可能花费较少时间来做运算，这意味着我们要尽可能的把所有内容都放到后台的线程中。为了在主线程中花费更少的时间来做计算，我们只需要绘制一些必要的标注。这可以避免用户滑动过程中感到很卡，从而保证流畅的用户体验。</p>
+
+<p>开始之前，我们看一下下面的图片：</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216113807_1.jpg"></p>
+
+<p>左边的屏幕截图是地图进行滑动前的地图快照。这个快照中的标注就是目前mapView中的标注，我们称这个为“before集合”。</p>
+
+<p>右边的屏幕截图是地图进行滑动后的地图快照。这个快照中的标注就是从<code>clusteredAnnotationsWithinMapRect:withZoomScale:</code>这个函数中得到的返回值。我们称这个为“after集合”。</p>
+
+<p>我们期望保留两个快照中都存在的标注点（即重合的那些标注点），去除在“after集合”中不存在的那些标注点，同时添加那些新的标注点。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="p">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">updateMapViewAnnotationsWithAnnotations:</span><span class="p">(</span><span class="bp">NSArray</span> <span class="o">*</span><span class="p">)</span><span class="nv">annotations</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="bp">NSMutableSet</span> <span class="o">*</span><span class="n">before</span> <span class="o">=</span> <span class="p">[</span><span class="bp">NSMutableSet</span> <span class="nl">setWithArray</span><span class="p">:</span><span class="nb">self</span><span class="p">.</span><span class="n">mapView</span><span class="p">.</span><span class="n">annotations</span><span class="p">];</span>
+</span><span class='line'>    <span class="bp">NSSet</span> <span class="o">*</span><span class="n">after</span> <span class="o">=</span> <span class="p">[</span><span class="bp">NSSet</span> <span class="nl">setWithArray</span><span class="p">:</span><span class="n">annotations</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// Annotations circled in blue shared by both sets </span>
+</span><span class='line'>    <span class="bp">NSMutableSet</span> <span class="o">*</span><span class="n">toKeep</span> <span class="o">=</span> <span class="p">[</span><span class="bp">NSMutableSet</span> <span class="nl">setWithSet</span><span class="p">:</span><span class="n">before</span><span class="p">];</span>
+</span><span class='line'>    <span class="p">[</span><span class="n">toKeep</span> <span class="nl">intersectSet</span><span class="p">:</span><span class="n">after</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// Annotations circled in green </span>
+</span><span class='line'>    <span class="bp">NSMutableSet</span> <span class="o">*</span><span class="n">toAdd</span> <span class="o">=</span> <span class="p">[</span><span class="bp">NSMutableSet</span> <span class="nl">setWithSet</span><span class="p">:</span><span class="n">after</span><span class="p">];</span>
+</span><span class='line'>    <span class="p">[</span><span class="n">toAdd</span> <span class="nl">minusSet</span><span class="p">:</span><span class="n">toKeep</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// Annotations circled in red </span>
+</span><span class='line'>    <span class="bp">NSMutableSet</span> <span class="o">*</span><span class="n">toRemove</span> <span class="o">=</span> <span class="p">[</span><span class="bp">NSMutableSet</span> <span class="nl">setWithSet</span><span class="p">:</span><span class="n">before</span><span class="p">];</span>
+</span><span class='line'>    <span class="p">[</span><span class="n">toRemove</span> <span class="nl">minusSet</span><span class="p">:</span><span class="n">after</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// These two methods must be called on the main thread </span>
+</span><span class='line'>    <span class="p">[[</span><span class="bp">NSOperationQueue</span> <span class="n">mainQueue</span><span class="p">]</span> <span class="nl">addOperationWithBlock</span><span class="p">:</span><span class="o">^</span><span class="p">{</span>
+</span><span class='line'>        <span class="p">[</span><span class="nb">self</span><span class="p">.</span><span class="n">mapView</span> <span class="nl">addAnnotations</span><span class="p">:[</span><span class="n">toAdd</span> <span class="n">allObjects</span><span class="p">]];</span>
+</span><span class='line'>        <span class="p">[</span><span class="nb">self</span><span class="p">.</span><span class="n">mapView</span> <span class="nl">removeAnnotations</span><span class="p">:[</span><span class="n">toRemove</span> <span class="n">allObjects</span><span class="p">]];</span>
+</span><span class='line'>    <span class="p">}];</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这样我们尽可能的确保在主线程上做少量的工作，从而提升地图滑动的流畅性。</p>
+
+<p>接下来我们来看下如何绘制标注，并且在标注上显示出来旅馆的个数。最后我们给标注加上点击事件，这样使得app从头到脚都可以表现的非常完美。</p>
+
+<p>绘制标注
+由于我们在地图上并没有完全显示出全部旅馆，所以我们需要在剩余的这些标注上表现出真实的旅馆总量。</p>
+
+<p>首先创建一个圆形的标注，中间显示合并后的个数，也就是旅馆的真实总量。这个圆形的大小同样可以反映出合并后的个数。</p>
+
+<p>为了实现这个需求，我们要找出一个方程式，允许我们在1到500+的数值中生成一个缩小后的数值。用这个数值来作为标注的大小。我们将用到以下的方程式。</p>
+
+<p><img src="/images/posts/2013-12-28-how-to-handle-large-amounts-of-data-on-maps/4673_131216114009_1.png"></p>
+
+<p>x值较低的时候f(x)增长的比较快，x在值变大的时候f(x)增长变缓慢，β值用来控制f(x)趋于1的速度。α值影响最小值（在我们的项目中，我们的最小合并值（也就是1）能占总共最大值的60%）。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="k">static</span> <span class="n">CGFloat</span> <span class="k">const</span> <span class="n">TBScaleFactorAlpha</span> <span class="o">=</span> <span class="mf">0.3</span><span class="p">;</span>
+</span><span class='line'><span class="k">static</span> <span class="n">CGFloat</span> <span class="k">const</span> <span class="n">TBScaleFactorBeta</span> <span class="o">=</span> <span class="mf">0.4</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="n">CGFloat</span> <span class="nf">TBScaledValueForValue</span><span class="p">(</span><span class="n">CGFloat</span> <span class="n">value</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">return</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">expf</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span> <span class="o">*</span> <span class="n">TBScaleFactorAlpha</span> <span class="o">*</span> <span class="n">powf</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">TBScaleFactorBeta</span><span class="p">)));</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="p">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">setCount:</span><span class="p">(</span><span class="bp">NSUInteger</span><span class="p">)</span><span class="nv">count</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="n">_count</span> <span class="o">=</span> <span class="n">count</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="c1">// Our max size is (44,44) </span>
+</span><span class='line'>    <span class="bp">CGRect</span> <span class="n">newBounds</span> <span class="o">=</span> <span class="n">CGRectMake</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">roundf</span><span class="p">(</span><span class="mi">44</span> <span class="o">*</span> <span class="n">TBScaledValueForValue</span><span class="p">(</span><span class="n">count</span><span class="p">)),</span> <span class="n">roundf</span><span class="p">(</span><span class="mi">44</span> <span class="o">*</span> <span class="n">TBScaledValueForValue</span><span class="p">(</span><span class="n">count</span><span class="p">)));</span>
+</span><span class='line'>    <span class="nb">self</span><span class="p">.</span><span class="n">frame</span> <span class="o">=</span> <span class="n">TBCenterRect</span><span class="p">(</span><span class="n">newBounds</span><span class="p">,</span> <span class="nb">self</span><span class="p">.</span><span class="n">center</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="bp">CGRect</span> <span class="n">newLabelBounds</span> <span class="o">=</span> <span class="n">CGRectMake</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">newBounds</span><span class="p">.</span><span class="n">size</span><span class="p">.</span><span class="n">width</span> <span class="o">/</span> <span class="mf">1.3</span><span class="p">,</span> <span class="n">newBounds</span><span class="p">.</span><span class="n">size</span><span class="p">.</span><span class="n">height</span> <span class="o">/</span> <span class="mf">1.3</span><span class="p">);</span>
+</span><span class='line'>    <span class="nb">self</span><span class="p">.</span><span class="n">countLabel</span><span class="p">.</span><span class="n">frame</span> <span class="o">=</span> <span class="n">TBCenterRect</span><span class="p">(</span><span class="n">newLabelBounds</span><span class="p">,</span> <span class="n">TBRectCenter</span><span class="p">(</span><span class="n">newBounds</span><span class="p">));</span>
+</span><span class='line'>    <span class="nb">self</span><span class="p">.</span><span class="n">countLabel</span><span class="p">.</span><span class="n">text</span> <span class="o">=</span> <span class="p">[</span><span class="l">@(</span><span class="n">_count</span><span class="l">)</span> <span class="n">stringValue</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="p">[</span><span class="nb">self</span> <span class="n">setNeedsDisplay</span><span class="p">];</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>现在标注的大小已经OK了。让我们再来把这个标注做漂亮些。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="p">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">setupLabel</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="n">_countLabel</span> <span class="o">=</span> <span class="p">[[</span><span class="bp">UILabel</span> <span class="n">alloc</span><span class="p">]</span> <span class="nl">initWithFrame</span><span class="p">:</span><span class="nb">self</span><span class="p">.</span><span class="n">frame</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">_countLabel</span><span class="p">.</span><span class="n">backgroundColor</span> <span class="o">=</span> <span class="p">[</span><span class="bp">UIColor</span> <span class="n">clearColor</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">_countLabel</span><span class="p">.</span><span class="n">textColor</span> <span class="o">=</span> <span class="p">[</span><span class="bp">UIColor</span> <span class="n">whiteColor</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">_countLabel</span><span class="p">.</span><span class="n">textAlignment</span> <span class="o">=</span> <span class="n">NSTextAlignmentCenter</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">_countLabel</span><span class="p">.</span><span class="n">shadowColor</span> <span class="o">=</span> <span class="p">[</span><span class="bp">UIColor</span> <span class="nl">colorWithWhite</span><span class="p">:</span><span class="mf">0.0</span> <span class="nl">alpha</span><span class="p">:</span><span class="mf">0.75</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">_countLabel</span><span class="p">.</span><span class="n">shadowOffset</span> <span class="o">=</span> <span class="n">CGSizeMake</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">_countLabel</span><span class="p">.</span><span class="n">adjustsFontSizeToFitWidth</span> <span class="o">=</span> <span class="nb">YES</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">_countLabel</span><span class="p">.</span><span class="n">numberOfLines</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+</span><span class='line'>    <span class="n">_countLabel</span><span class="p">.</span><span class="n">font</span> <span class="o">=</span> <span class="p">[</span><span class="bp">UIFont</span> <span class="nl">boldSystemFontOfSize</span><span class="p">:</span><span class="mi">12</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">_countLabel</span><span class="p">.</span><span class="n">baselineAdjustment</span> <span class="o">=</span> <span class="n">UIBaselineAdjustmentAlignCenters</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">[</span><span class="nb">self</span> <span class="nl">addSubview</span><span class="p">:</span><span class="n">_countLabel</span><span class="p">];</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="p">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">drawRect:</span><span class="p">(</span><span class="bp">CGRect</span><span class="p">)</span><span class="nv">rect</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="n">CGContextRef</span> <span class="n">context</span> <span class="o">=</span> <span class="n">UIGraphicsGetCurrentContext</span><span class="p">();</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">CGContextSetAllowsAntialiasing</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="nb">true</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="bp">UIColor</span> <span class="o">*</span><span class="n">outerCircleStrokeColor</span> <span class="o">=</span> <span class="p">[</span><span class="bp">UIColor</span> <span class="nl">colorWithWhite</span><span class="p">:</span><span class="mi">0</span> <span class="nl">alpha</span><span class="p">:</span><span class="mf">0.25</span><span class="p">];</span>
+</span><span class='line'>    <span class="bp">UIColor</span> <span class="o">*</span><span class="n">innerCircleStrokeColor</span> <span class="o">=</span> <span class="p">[</span><span class="bp">UIColor</span> <span class="n">whiteColor</span><span class="p">];</span>
+</span><span class='line'>    <span class="bp">UIColor</span> <span class="o">*</span><span class="n">innerCircleFillColor</span> <span class="o">=</span> <span class="p">[</span><span class="bp">UIColor</span> <span class="nl">colorWithRed</span><span class="p">:(</span><span class="mf">255.0</span> <span class="o">/</span> <span class="mf">255.0</span><span class="p">)</span> <span class="nl">green</span><span class="p">:(</span><span class="mi">95</span> <span class="o">/</span> <span class="mf">255.0</span><span class="p">)</span> <span class="nl">blue</span><span class="p">:(</span><span class="mi">42</span> <span class="o">/</span> <span class="mf">255.0</span><span class="p">)</span> <span class="nl">alpha</span><span class="p">:</span><span class="mf">1.0</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="bp">CGRect</span> <span class="n">circleFrame</span> <span class="o">=</span> <span class="n">CGRectInset</span><span class="p">(</span><span class="n">rect</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="p">[</span><span class="n">outerCircleStrokeColor</span> <span class="n">setStroke</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">CGContextSetLineWidth</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">CGContextStrokeEllipseInRect</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="n">circleFrame</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="p">[</span><span class="n">innerCircleStrokeColor</span> <span class="n">setStroke</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">CGContextSetLineWidth</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="mi">4</span><span class="p">);</span>
+</span><span class='line'>    <span class="n">CGContextStrokeEllipseInRect</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="n">circleFrame</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="p">[</span><span class="n">innerCircleFillColor</span> <span class="n">setFill</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">CGContextFillEllipseInRect</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="n">circleFrame</span><span class="p">);</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h2>添加最后的touch事件</h2>
+
+<p>目前的标注可以很好的呈现出我们的数据了，让我们最后添加一些touch事件来让我们的app用起来更有趣。</p>
+
+<p>首先，我们需要为新添加到地图上的标注做一个动画。如果没有添加动画的话，新的标注就会在地图上突然出现，体验效果将会大打折扣。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="p">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">addBounceAnnimationToView:</span><span class="p">(</span><span class="bp">UIView</span> <span class="o">*</span><span class="p">)</span><span class="nv">view</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="bp">CAKeyframeAnimation</span> <span class="o">*</span><span class="n">bounceAnimation</span> <span class="o">=</span> <span class="p">[</span><span class="bp">CAKeyframeAnimation</span> <span class="nl">animationWithKeyPath</span><span class="p">:</span><span class="s">@&quot;transform.scale&quot;</span><span class="p">];</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">bounceAnimation</span><span class="p">.</span><span class="n">values</span> <span class="o">=</span> <span class="l">@[@(</span><span class="mf">0.05</span><span class="l">)</span><span class="p">,</span> <span class="l">@(</span><span class="mf">1.1</span><span class="l">)</span><span class="p">,</span> <span class="l">@(</span><span class="mf">0.9</span><span class="l">)</span><span class="p">,</span> <span class="l">@(</span><span class="mi">1</span><span class="l">)]</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="n">bounceAnimation</span><span class="p">.</span><span class="n">duration</span> <span class="o">=</span> <span class="mf">0.6</span><span class="p">;</span>
+</span><span class='line'>    <span class="bp">NSMutableArray</span> <span class="o">*</span><span class="n">timingFunctions</span> <span class="o">=</span> <span class="p">[[</span><span class="bp">NSMutableArray</span> <span class="n">alloc</span><span class="p">]</span> <span class="n">init</span><span class="p">];</span>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="bp">NSInteger</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="p">[</span><span class="n">timingFunctions</span> <span class="nl">addObject</span><span class="p">:[</span><span class="bp">CAMediaTimingFunction</span> <span class="nl">functionWithName</span><span class="p">:</span><span class="n">kCAMediaTimingFunctionEaseInEaseOut</span><span class="p">]];</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'>    <span class="p">[</span><span class="n">bounceAnimation</span> <span class="nl">setTimingFunctions</span><span class="p">:</span><span class="n">timingFunctions</span><span class="p">.</span><span class="k">copy</span><span class="p">];</span>
+</span><span class='line'>    <span class="n">bounceAnimation</span><span class="p">.</span><span class="n">removedOnCompletion</span> <span class="o">=</span> <span class="nb">NO</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="p">[</span><span class="n">view</span><span class="p">.</span><span class="n">layer</span> <span class="nl">addAnimation</span><span class="p">:</span><span class="n">bounceAnimation</span> <span class="nl">forKey</span><span class="p">:</span><span class="s">@&quot;bounce&quot;</span><span class="p">];</span>
+</span><span class='line'><span class="p">}</span>
+</span><span class='line'>
+</span><span class='line'><span class="p">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">mapView:</span><span class="p">(</span><span class="bp">MKMapView</span> <span class="o">*</span><span class="p">)</span><span class="nv">mapView</span> <span class="nf">didAddAnnotationViews:</span><span class="p">(</span><span class="bp">NSArray</span> <span class="o">*</span><span class="p">)</span><span class="nv">views</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="k">for</span> <span class="p">(</span><span class="bp">UIView</span> <span class="o">*</span><span class="n">view</span> <span class="k">in</span> <span class="n">views</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="p">[</span><span class="nb">self</span> <span class="nl">addBounceAnnimationToView</span><span class="p">:</span><span class="n">view</span><span class="p">];</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>接下来，我们想要根据地图的缩放比例来改变在合并时的小单元格（cell）的大小。在地图进行放大时，小单元格变小。所以我们需要定义一下当前地图的缩放比例。也就是<code>scale=mapView.bounds.size.width/mapView.visibleMapRect.size.width</code>:</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="bp">NSInteger</span> <span class="nf">TBZoomScaleToZoomLevel</span><span class="p">(</span><span class="n">MKZoomScale</span> <span class="n">scale</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="kt">double</span> <span class="n">totalTilesAtMaxZoom</span> <span class="o">=</span> <span class="n">MKMapSizeWorld</span><span class="p">.</span><span class="n">width</span> <span class="o">/</span> <span class="mf">256.0</span><span class="p">;</span>
+</span><span class='line'>    <span class="bp">NSInteger</span> <span class="n">zoomLevelAtMaxZoom</span> <span class="o">=</span> <span class="n">log2</span><span class="p">(</span><span class="n">totalTilesAtMaxZoom</span><span class="p">);</span>
+</span><span class='line'>    <span class="bp">NSInteger</span> <span class="n">zoomLevel</span> <span class="o">=</span> <span class="n">MAX</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">zoomLevelAtMaxZoom</span> <span class="o">+</span> <span class="n">floor</span><span class="p">(</span><span class="n">log2f</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">));</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">return</span> <span class="n">zoomLevel</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>我们为每个地图缩放的比例都定义一个常量。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="kt">float</span> <span class="nf">TBCellSizeForZoomScale</span><span class="p">(</span><span class="n">MKZoomScale</span> <span class="n">zoomScale</span><span class="p">)</span>
+</span><span class='line'><span class="p">{</span>
+</span><span class='line'>    <span class="bp">NSInteger</span> <span class="n">zoomLevel</span> <span class="o">=</span> <span class="n">TBZoomScaleToZoomLevel</span><span class="p">(</span><span class="n">zoomScale</span><span class="p">);</span>
+</span><span class='line'>
+</span><span class='line'>    <span class="k">switch</span> <span class="p">(</span><span class="n">zoomLevel</span><span class="p">)</span> <span class="p">{</span>
+</span><span class='line'>        <span class="k">case</span> <span class="mi">13</span><span class="o">:</span>
+</span><span class='line'>        <span class="k">case</span> <span class="mi">14</span><span class="o">:</span>
+</span><span class='line'>        <span class="k">case</span> <span class="mi">15</span><span class="o">:</span>
+</span><span class='line'>            <span class="k">return</span> <span class="mi">64</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">case</span> <span class="mi">16</span><span class="o">:</span>
+</span><span class='line'>        <span class="k">case</span> <span class="mi">17</span><span class="o">:</span>
+</span><span class='line'>        <span class="k">case</span> <span class="mi">18</span><span class="o">:</span>
+</span><span class='line'>            <span class="k">return</span> <span class="mi">32</span><span class="p">;</span>
+</span><span class='line'>        <span class="k">case</span> <span class="mi">19</span><span class="o">:</span>
+</span><span class='line'>            <span class="k">return</span> <span class="mi">16</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'>        <span class="k">default</span><span class="o">:</span>
+</span><span class='line'>            <span class="k">return</span> <span class="mi">88</span><span class="p">;</span>
+</span><span class='line'>    <span class="p">}</span>
+</span><span class='line'><span class="p">}</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>现在我们放大地图，我们将看到逐渐变小的标注，直到最后我们能看到代表每个旅馆的那个标注。</p>
+
+<p><a href="https://github.com/thoughtbot/TBAnnotationClustering">完整源代码在这里</a></p>
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Orin Chen</span></span>
+
+      
+
+
+
+
+<time class='entry-date' datetime='2013-12-28T16:19:52+08:00'><span class='date'><span class='date-month'>Dec</span> <span class='date-day'>28</span><span class='date-suffix'>th</span>, <span class='date-year'>2013</span></span> <span class='time'>4:19 pm</span></time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/ios/'>ios</a>, <a class='category' href='/blog/categories/objective-c/'>objective-c</a>, <a class='category' href='/blog/categories/di-tu/'>地图</a>, <a class='category' href='/blog/categories/suan-fa/'>算法</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+
+  
+  <!-- JiaThis Button BEGIN -->
+  <div class="jiathis_style">
+    <span class="jiathis_txt">分享到：</span>
+    <a class="jiathis_button_tsina">新浪微博</a>
+    <a class="jiathis_button_googleplus">Google+</a>
+    <a class="jiathis_button_renren">人人网</a>
+    <a class="jiathis_button_qzone">QQ空间</a>
+    <a class="jiathis_button_tqq">腾讯微博</a>
+    <a href="http://www.jiathis.com/share" class="jiathis jiathis_txt jiathis_separator jtico jtico_jiathis" target="_blank">更多</a>
+    <a class="jiathis_counter_style"></a>
+  </div>
+  <script type="text/javascript" src="http://v2.jiathis.com/code/jia.js?uid=1334720487296344" charset="utf-8"></script>
+  <p/>
+  <!-- JiaThis Button END -->
+
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2013/12/27/value-object/" title="Previous Post: 值对象">&laquo; 值对象</a>
+      
+      
+        <a class="basic-alignment right" href="/blog/2013/12/30/let-octopress-support-latex/" title="Next Post: 让 octopress 支持 LaTeX">让 octopress 支持 LaTeX &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+  <section>
+    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+  </section>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/05/06/create-aliase-of-sublime-text-in-zsh/">在 ZSH 中调用 Sublime Text</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/11/ios7-interactive-transitions/">iOS 7 交互式过渡</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/26/a-look-inside-blocks/">谈Objective-C Block的实现</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/20/objective-c-object-model/">Objective-C对象模型及应用</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/15/use-gcd/">使用 GCD</a>
+      </li>
+    
+  </ul>
+</section>
+
+<section>
+  <h1>GitHub Repos</h1>
+  <ul id="gh_repos">
+    <li class="loading">Status updating&#8230;</li>
+  </ul>
+  
+  <a href="https://github.com/orinchen">@orinchen</a> on GitHub
+  
+  <script type="text/javascript">
+    $(document).ready(function(){
+        if (!window.jXHR){
+            var jxhr = document.createElement('script');
+            jxhr.type = 'text/javascript';
+            jxhr.src = '/javascripts/libs/jXHR.js';
+            var s = document.getElementsByTagName('script')[0];
+            s.parentNode.insertBefore(jxhr, s);
+        }
+
+        github.showRepos({
+            user: 'orinchen',
+            count: 0,
+            skip_forks: true,
+            target: '#gh_repos'
+        });
+    });
+  </script>
+  <script src="/javascripts/github.js" type="text/javascript"> </script>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 - Orin Chen -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'orin-world';
+      
+        
+        // var disqus_developer = 1;
+        var disqus_identifier = 'http://orinchen.github.io/blog/2013/12/28/how-to-handle-large-amounts-of-data-on-maps/';
+        var disqus_url = 'http://orinchen.github.io/blog/2013/12/28/how-to-handle-large-amounts-of-data-on-maps/';
+        var disqus_script = 'embed.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = '//' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,1766 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: Ios | O's World]]></title>
+  <link href="http://orinchen.github.io/blog/categories/ios/atom.xml" rel="self"/>
+  <link href="http://orinchen.github.io/"/>
+  <updated>2014-12-23T14:39:05+08:00</updated>
+  <id>http://orinchen.github.io/</id>
+  <author>
+    <name><![CDATA[Orin Chen]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[iOS 7 交互式过渡]]></title>
+    <link href="http://orinchen.github.io/blog/2014/04/11/ios7-interactive-transitions/"/>
+    <updated>2014-04-11T10:04:52+08:00</updated>
+    <id>http://orinchen.github.io/blog/2014/04/11/ios7-interactive-transitions</id>
+    <content type="html"><![CDATA[<p>本文转载自:<a href="http://nonomori.farbox.com/post/ios-7-jiao-hu-shi-guo-du">NONOMORI</a></p>
+
+<p>iOS 7 新加入了一个介于 ViewController 之间的过渡的实现方法。本文将介绍如何利用自定义的过渡实现如图所示效果。</p>
+
+<p><img src="/images/posts/2014-04-11-ios7-interactive-transitions/001.gif"></p>
+
+<p>在这个例子中，我们将在两个 ViewConrtoller 的转换过程中加入一个自定义的过渡。DSLFirstViewController 是我们的第一个 viewController，其包含一个 CollectionView，每一个 Cell 都包含一张图片和一个标签。DSLSecondViewController 是我们的第二个 viewController，其上有一张图和一个标签。我们希望，当用户点击 DSLFirstViewController 的 Cell 后能平滑过渡到 DSLSecondViewController 中去。</p>
+
+<p>这个例子源代码已发布在 <a href="https://github.com/PeteC/InteractiveViewControllerTransitions">GitHub</a>。</p>
+
+<!--more-->
+
+
+<h2>实现自定义过渡</h2>
+
+<p>过渡是由使用了 UIViewControllerAnimatedTransitioning 协议的对象来实现的。我们现在新建一个继承自 NSObject 的类，取名 DSLTransitionFromFirstToSecond。将上面提到的协议加入该类，然后就可以使用他来实现我们的两个类的过渡效果了。</p>
+
+<p>在这个对象中，有两个方法需要实现：<code>animateTransition:</code> 和 <code>transitionDuration:</code>。后者相当直观，就是这个过渡的持续时间，我们只要简单返回一个 NSTimeInterval 值就行。</p>
+
+<pre><code class="objc">- (NSTimeInterval)transitionDuration:(id&lt;UIViewControllerContextTransitioning&gt;)transitionContext {
+    return 0.3;
+}
+</code></pre>
+
+<p>animateTransition: 方法是定义两个 ViewController 之间过渡效果的地方。这个方法会传递给我们一个参数，该参数可以让我们访问一些实现过渡所必须的对象。</p>
+
+<ul>
+<li>viewControllerForKey：我们可以通过他访问过渡的两个 ViewController。</li>
+<li>containerView：两个 ViewController 的 containerView。</li>
+<li>initialFrameForViewController 和 finalFrameForViewController 是过渡开始和结束时每个 ViewController 的 frame。</li>
+</ul>
+
+
+<p>现在我们开始这个方法的具体实现。首先我们需要得到过渡前后两个 ViewController 以及他们的 containerView 的指针。</p>
+
+<pre><code class="objc">- (void)animateTransition:(id&lt;UIViewControllerContextTransitioning&gt;)transitionContext {
+    DSLFirstViewController *fromViewController = (DSLFirstViewController*)[transitionContext viewControllerForKey:UITransitionContextFromViewControllerKey];
+    DSLSecondViewController *toViewController = (DSLSecondViewController*)[transitionContext viewControllerForKey:UITransitionContextToViewControllerKey];
+
+    UIView *containerView = [transitionContext containerView];
+</code></pre>
+
+<p>接下来，获得我们需要过渡的 Cell，并且对它上面的 imageView 截图。这个截图就会用在我们的过渡效果中。同时，我们将这个 imageView 本身隐藏，从而让用户以为是 imageView 在移动的。</p>
+
+<pre><code class="objc">    // 获得cell上imageView的截图
+    DSLThingCell *cell = (DSLThingCell*)[fromViewController.collectionView cellForItemAtIndexPath:[[fromViewController.collectionView indexPathsForSelectedItems] firstObject]];
+    UIView *cellImageSnapshot = [cell.imageView snapshotView];
+    cellImageSnapshot.frame = [containerView convertRect:cell.imageView.frame fromView:cell.imageView.superview];
+    cell.imageView.hidden = YES;
+</code></pre>
+
+<p>然后，我们对第二个 viewController 进行设置，将它的放到过渡后的位置，但让他完全透明，我们会在过渡时给它一个淡入的效果。</p>
+
+<pre><code class="objc">    // 初始化一开始的状态
+    toViewController.view.frame = [transitionContext finalFrameForViewController:toViewController];
+    toViewController.view.alpha = 0;
+    toViewController.imageView.hidden = YES;
+
+    [containerView addSubview:toViewController.view];
+    [containerView addSubview:cellImageSnapshot];
+</code></pre>
+
+<p>现在来做 view 的动画，移动之前生成的 imageView 的截图，淡入第二个 viewController 的 view。在动画结束后，移除 imageView 的截图，让第二个 view 完全呈现。</p>
+
+<pre><code class="objc">    [UIView animateWithDuration:duration animations:^{
+        // 淡入第二个viewController的view
+        toViewController.view.alpha = 1.0;
+
+        // 将截图放到第二个viewController的imageView上
+        CGRect frame = [containerView convertRect:toViewController.imageView.frame fromView:toViewController.view];
+        cellImageSnapshot.frame = frame;
+    } completion:^(BOOL finished) {
+        // Clean up
+        toViewController.imageView.hidden = NO;
+        cell.hidden = NO;
+        [cellImageSnapshot removeFromSuperview];
+
+        // 声明过渡结束
+        [transitionContext completeTransition:!transitionContext.transitionWasCancelled];
+    }];
+}
+</code></pre>
+
+<p>记住，一定别忘了在过渡结束时调用 <code>completeTransition:</code> 这个方法。</p>
+
+<h2>使用自定义过渡</h2>
+
+<p>到目前为止，我们实现了自定义过渡对象，不过我们并没有告知 UINavigationController 去使用它。接下来，将介绍我们如何做到这一点。</p>
+
+<p>当一个新的 viewController 被推入或者弹出它的导航堆，它将询问它的代理，是否有一个使用了 UIViewCOntrollerAnimatedTransitioning 协议的对象，我们现在要做的，就是提供这个对象使得过渡能够展现。</p>
+
+<p>首先是把 UINavigationControllerDelegate 协议加入到 DSLFirstViewController 中去。</p>
+
+<pre><code class="objc">@interface DSLFirstViewController ()&lt;UINavigationControllerDelegate&gt;
+</code></pre>
+
+<p>我们还需要给 navigationController 的 delegate 赋值。一个比较理想的地方是在 <code>viewDidAppear:</code>。</p>
+
+<pre><code class="objc">- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+
+    // 让我自己变成navigationController的delegate
+    self.navigationController.delegate = self;
+}
+</code></pre>
+
+<p>别忘了在 view 消失时，把 navigationController 的 delegate 去除。</p>
+
+<pre><code class="objc">- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+
+    // 我不再是 navigationController 的代理啦
+    if (self.navigationController.delegate == self) {
+        self.navigationController.delegate = nil;
+    }
+}
+</code></pre>
+
+<p>现在我们可以开始实现这个长长名字的 UINavigationControllerDelegate 的方法。</p>
+
+<pre><code class="objc">- (id&lt;UIViewControllerAnimatedTransitioning&gt;)navigationController:(UINavigationController *)navigationController
+                                  animationControllerForOperation:(UINavigationControllerOperation)operation
+                                               fromViewController:(UIViewController *)fromVC
+                                                 toViewController:(UIViewController *)toVC {
+    // 检查一下是不是过渡到DSLSecondViewController
+    if (fromVC == self &amp;&amp; [toVC isKindOfClass:[DSLSecondViewController class]]) {
+        return [[DSLTransitionFromFirstToSecond alloc] init];
+    }
+    else {
+        return nil;
+    }
+}
+</code></pre>
+
+<p>That’s it. 当第二个 viewController 被推入进来时，navigationController 将使用我们自定义的过渡。</p>
+
+<p>要实现弹回时的过渡效果，还是一样的方法，实现一个新的 DSLTransitionFromSecondToFirst 类用来过渡即可。</p>
+
+<h2>让过渡变得可以交互</h2>
+
+<p>现在我们有自定义过渡了，是时候加入交互了。我们希望让这个过渡在用户手指从屏幕左边边缘划入时产生互动。为了做到这点，我们将使用一个 iOS 7 新加入的手势识别器， <code>UIScreenEdgePanGestureRecognizer</code>。</p>
+
+<p>我们在第二个 viewController 的 viewDidLoad 方法中，创建这个手势识别器。</p>
+
+<pre><code class="objc">- (void)viewDidLoad {
+    [super viewDidLoad];
+
+    ...
+
+    UIScreenEdgePanGestureRecognizer *popRecognizer = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePopRecognizer:)];
+    popRecognizer.edges = UIRectEdgeLeft;
+    [self.view addGestureRecognizer:popRecognizer];
+}
+</code></pre>
+
+<p>现在我们可以识别该手势了，我们用它来设置并更新一个 iOS 7 新加入的类的对象。 UIPercentDrivenInteractiveTransition。这个类的对象会根据我们的手势，来决定我们的自定义过渡的完成度。我们把这些都放到手势识别器的 action 方法中去，具体就是：</p>
+
+<p>当手势刚刚开始，我们创建一个 UIPercentDrivenInteractiveTransition 对象，然后让 navigationController 去把当前这个 viewController 弹出。</p>
+
+<p>当手慢慢划入时，我们把总体手势划入的进度告诉 UIPercentDrivenInteractiveTransition 对象。</p>
+
+<p>当手势结束，我们根据用户的手势进度来判断过渡是应该完成还是取消并相应的调用 <code>finishInteractiveTransition</code> 或者 <code>cancelInteractiveTransition</code> 方法.</p>
+
+<pre><code class="objc">- (void)handlePopRecognizer:(UIScreenEdgePanGestureRecognizer*)recognizer {
+    // 计算用户手指划了多远
+    CGFloat progress = [recognizer translationInView:self.view].x / (self.view.bounds.size.width * 1.0);
+    progress = MIN(1.0, MAX(0.0, progress));
+
+    if (recognizer.state == UIGestureRecognizerStateBegan) {
+        // 创建过渡对象，弹出viewController
+        self.interactivePopTransition = [[UIPercentDrivenInteractiveTransition alloc] init];
+        [self.navigationController popViewControllerAnimated:YES];
+    }
+    else if (recognizer.state == UIGestureRecognizerStateChanged) {
+        // 更新 interactive transition 的进度
+        [self.interactivePopTransition updateInteractiveTransition:progress];
+    }
+    else if (recognizer.state == UIGestureRecognizerStateEnded || recognizer.state == UIGestureRecognizerStateCancelled) {
+        // 完成或者取消过渡
+        if (progress &gt; 0.5) {
+            [self.interactivePopTransition finishInteractiveTransition];
+        }
+        else {
+            [self.interactivePopTransition cancelInteractiveTransition];
+        }
+
+        self.interactivePopTransition = nil;
+    }
+}
+</code></pre>
+
+<p>现在我们可以创建并更新 UIPercentDrivenInteractiveTransition 对象了，我们需要告诉 navigationController 去用它。为此，我们需要实现另一个 UInavigationControllerDelegate 的方法。</p>
+
+<pre><code class="objc">- (id&lt;UIViewControllerInteractiveTransitioning&gt;)navigationController:(UINavigationController *)navigationController
+                         interactionControllerForAnimationController:(id&lt;UIViewControllerAnimatedTransitioning&gt;)animationController {
+    // 检查是否是我们的自定义过渡
+    if ([animationController isKindOfClass:[DSLTransitionFromSecondToFirst class]]) {
+        return self.interactivePopTransition;
+    }
+    else {
+        return nil;
+    }
+}
+</code></pre>
+
+<p>至此，我们第二个 viewController 回到第一个 viewController 的过渡就可以交互了。</p>
+
+<h2>尾声</h2>
+
+<p>希望这篇文章能帮你理解如何创建你自己的自定义过渡及其交互。文中例子的工程文件已上传至 <a href="https://github.com/PeteC/InteractiveViewControllerTransitions">GitHub</a>。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[Objective-C对象模型及应用]]></title>
+    <link href="http://orinchen.github.io/blog/2014/03/20/objective-c-object-model/"/>
+    <updated>2014-03-20T10:43:32+08:00</updated>
+    <id>http://orinchen.github.io/blog/2014/03/20/objective-c-object-model</id>
+    <content type="html"><![CDATA[<p>本文转载自:<a href="http://blog.devtang.com/blog/2013/10/15/objective-c-object-model/">唐巧的技术博客</a></p>
+
+<h2>前言</h2>
+
+<p>本文主要介绍 Objective-C 对象模型的实现细节，以及 Objective-C 语言对象模型中对 <strong>isa swizzling</strong> 和 <strong>method swizzling</strong> 的支持。希望本文能加深你对 Objective-C 对象的理解。</p>
+
+<!--more-->
+
+
+<h2>ISA指针</h2>
+
+<p>Objective-C 是一门面向对象的编程语言。每一个对象都是一个类的实例。在 Objective-C 语言的内部，每一个对象都有一个名为 <strong>isa</strong> 的指针，指向该对象的类。每一个类描述了一系列它的实例的特点，包括成员变量的列表，成员函数的列表等。每一个对象都可以接受消息，而对象能够接收的消息列表是保存在它所对应的类中。</p>
+
+<p>在 XCode 中按 <em>Shift + Command + O</em>, 然后输入 NSObject.h 和 objc.h，可以打开 <code>NSObject</code> 的定义头文件，通过头文件我们可以看到，<code>NSObject</code> 就是一个包含 <strong>isa</strong> 指针的结构体，如下图所示：</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-nsobject-isa.jpg"></p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-objc-object-isa.jpg"></p>
+
+<p>按照面向对象语言的设计原则，所有事物都应该是对象（严格来说 Objective-C 并没有完全做到这一点，因为它有象 int, double 这样的简单变量类型）。在 Objective-C 语言中，每一个类实际上也是一个对象。每一个类也有一个名为 <strong>isa</strong> 的指针。每一个类也可以接受消息，例如 <code>[NSObject alloc]</code>，就是向 NSObject 这个类发送名为 <code>alloc</code> 消息。</p>
+
+<p>在 XCode 中按 <em>Shift + Command + O</em>, 然后输入 runtime.h，可以打开 Class 的定义头文件，通过头文件我们可以看到，Class 也是一个包含 <strong>isa</strong> 指针的结构体，如下图所示。（图中除了 <strong>isa</strong> 外还有其它成员变量，但那是为了兼容非2.0版的 Objective-C 的遗留逻辑，大家可以忽略它。）</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-objc-class-isa.jpg"></p>
+
+<p>因为类也是一个对象，那它也必须是另一个类的实列，这个类就是元类(<strong>metaclass</strong>)。元类保存了类方法的列表。当一个类方法被调用时，元类会首先查找它本身是否有该类方法的实现，如果没有，则该元类会向它的父类查找该方法，直到一直找到继承链的头。</p>
+
+<p>元类(<strong>metaclass</strong>)也是一个对象，那么元类的 <strong>isa</strong> 指针又指向哪里呢？为了设计上的完整，所有的元类的 <strong>isa</strong> 指针都会指向一个根元类(<strong>root metaclass</strong>)。根元类(<strong>root metaclass</strong>)本身的 <strong>isa</strong> 指针指向自己，这样就行成了一个闭环。上面提到，一个对象能够接收的消息列表是保存在它所对应的类中的。在实际编程中，我们几乎不会遇到向元类发消息的情况，那它的 <strong>isa</strong> 指针在实际上很少用到。不过这么设计保证了面向对象的干净，即所有事物都是对象，都有 <strong>isa</strong> 指针。</p>
+
+<p>我们再来看看继承关系，由于类方法的定义是保存在元类(<strong>metaclass</strong>)中，而方法调用的规则是：如果该类没有一个方法的实现，则向它的父类继续查找。所以，为了保证父类的类方法可以在子类中可以被调用，所以子类的元类会继承父类的元类，换而言之，类对象和元类对象有着同样的继承关系。</p>
+
+<p>我很想把关系说清楚一些，但是这块儿确实有点绕，下面这张图或许能够让大家对 <strong>isa</strong>和继承的关系清楚一些（该图片来自<a href="http://www.sealiesoftware.com/blog/class%20diagram.pdf">这里</a>）:</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-diagram.jpg"></p>
+
+<p>该图中，最让人困惑的莫过于 <strong>Root Class</strong> 了。在实现中，<strong>Root Class</strong> 是指 <strong>NSObject</strong>，我们可以从图中看出：</p>
+
+<ol>
+<li>NSObject 类包括它的对象实例方法。</li>
+<li>NSObject 的元类包括它的类方法，例如 alloc 方法。</li>
+<li>NSObject 的元类继承自 NSObject 类。</li>
+<li>一个 NSObject 的类中的方法同时也会被 NSObject 的子类在查找方法时找到。</li>
+</ol>
+
+
+<h2>类的成员变量</h2>
+
+<p>如果把类的实例看成一个 <strong>C</strong> 语言的结构体（<strong>struct</strong>），上面说的 <strong>isa</strong> 指针就是这个结构体的第一个成员变量，而类的其它成员变量依次排列在结构体中。排列顺序如下图所示（图片来自《iOS 6 Programming Pushing the Limits》）：</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-member.jpg"></p>
+
+<p>为了验证该说法，我们在 XCode 中新建一个工程，在 main.m 中运行如下代码：</p>
+
+<pre><code class="objc">#import &lt;UIKit/UIKit.h&gt;
+
+@interface Father : NSObject {
+    int _father;
+}
+
+@end
+
+@implementation Father
+
+@end
+
+@interface Child : Father {
+    int _child;
+}
+
+@end
+
+@implementation Child
+
+@end
+
+int main(int argc, char * argv[])
+{
+  Child * child = [[Child alloc] init];
+  @autoreleasepool {
+      // ...
+  }
+}
+</code></pre>
+
+<p>我们将断点下在 <code>@autoreleasepool</code> 处，然后在 <strong>Console</strong> 中输入 <code>p *child</code>,则可以看到 Xcode 输出如下内容，这与我们上面的说法一致。</p>
+
+<pre><code>(lldb) p *child
+(Child) $0 = {
+  (Father) Father = {
+    (NSObject) NSObject = {
+      (Class) isa = Child
+    }
+    (int) _father = 0
+  }
+  (int) _child = 0
+}
+</code></pre>
+
+<h2>可变与不可变</h2>
+
+<p>因为对象在内存中的排布可以看成一个结构体，该结构体的大小并不能动态变化。所以无法在运行时动态给对象增加成员变量。</p>
+
+<p>相对的，对象的方法定义都保存在类的可变区域中。Objective-C 2.0 并未在头文件中将实现暴露出来，但在 Objective-C 1.0 中，我们可以看到方法的定义列表是一个名为 <strong>methodLists</strong> 的指针的指针（如下图所示）。通过修改该指针指向的指针的值，就可以实现动态地为某一个类增加成员方法。这也是 <strong>Category</strong> 实现的原理。同时也说明了为什么 <strong>Category</strong> 只可为对象增加成员方法，却不能增加成员变量。</p>
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-objc-class-isa.jpg"></p>
+
+<p>需要特别说明一下，通过 <code>objc_setAssociatedObject</code> 和 <code>objc_getAssociatedObject</code> 方法可以变相地给对象增加成员变量，但由于实现机制不一样，所以并不是真正改变了对象的内存结构。</p>
+
+<p>除了对象的方法可以动态修改，因为 <strong>isa</strong> 本身也只是一个指针，所以我们也可以在运行时动态地修改 <strong>isa</strong> 指针的值，达到替换对象整个行为的目的。不过该应用场景较少。</p>
+
+<h2>系统相关API及应用</h2>
+
+<h3>isa swizzling 的应用</h3>
+
+<p>系统提供的 <strong>KVO</strong> 的实现，就利用了动态地修改 <strong>isa</strong> 指针的值的技术。在苹果的文档中可以看到如下描述：</p>
+
+<blockquote><p>Key-Value Observing Implementation Details</p>
+
+<p>Automatic key-value observing is implemented using a technique called isa-swizzling.</p>
+
+<p>The isa pointer, as the name suggests, points to the object’s class which maintains a dispatch table. This dispatch table essentially contains pointers to the methods the class implements, among other data.</p>
+
+<p>When an observer is registered for an attribute of an object the isa pointer of the observed object is modified, pointing to an intermediate class rather than at the true class. As a result the value of the isa pointer does not necessarily reflect the actual class of the instance.</p>
+
+<p>You should never rely on the isa pointer to determine class membership. Instead, you should use the class method to determine the class of an object instance.</p></blockquote>
+
+<h3>Method Swizzling API说明</h3>
+
+<p>Objective-C 提供了以下 API 来动态替换类方法或实例方法的实现：</p>
+
+<ul>
+<li><code>class_replaceMethod</code> 替换类方法的定义</li>
+<li><code>method_exchangeImplementations</code> 交换2个方法的实现</li>
+<li><code>method_setImplementation</code> 设置1个方法的实现</li>
+</ul>
+
+
+<p>这 3 个方法有一些细微的差别，给大家介绍如下：</p>
+
+<ul>
+<li><code>class_replaceMethod</code> 在苹果的文档（如下图所示）中能看到，它有两种不同的行为。当类中没有想替换的原方法时，该方法会调用 <code>class_addMethod</code> 来为该类增加一个新方法，也因为如此，<code>class_replaceMethod</code> 在调用时需要传入 <code>types</code> 参数，而 <code>method_exchangeImplementations</code> 和 <code>method_setImplementation</code> 却不需要。</li>
+</ul>
+
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-replace-method.jpg"></p>
+
+<ul>
+<li><code>method_exchangeImplementations</code> 的内部实现其实是调用了2次 <code>method_setImplementation</code> 方法，从苹果的文档中能清晰地了解到（如下图所示）</li>
+</ul>
+
+
+<p><img src="/images/posts/2014-03-20-objective-c-object-model/class-method-exchange-imp.jpg"></p>
+
+<p>从以上的区别我们可以总结出这3个API的使用场景:</p>
+
+<ul>
+<li><code>class_replaceMethod</code>, 当需要替换的方法可能有不存在的情况时，可以考虑使用该方法。</li>
+<li><code>method_exchangeImplementations</code>，当需要交换2个方法的实现时使用。</li>
+<li><code>method_setImplementation</code> 最简单的用法，当仅仅需要为一个方法设置其实现方式时使用。</li>
+</ul>
+
+
+<h2>使用示例</h2>
+
+<p>我们在开发猿题库客户端的笔记功能时，需要使用系统的 <code>UIImagePickerController</code>。但是，我们发现，在 iOS6.0.2 系统下，系统提供的 <code>UIImagePickerController</code> 在 iPad 横屏下有转屏的 Bug，造成其方向错误。具体的 Bug 详情可以见<a href="http://stackoverflow.com/questions/12522491/crash-on-presenting-uiimagepickercontroller-under-ios-6-0">这里</a>。</p>
+
+<p>为了修复该 Bug，我们需要替换 <code>UIImagePickerController</code> 的如下2个方法</p>
+
+<pre><code class="objc">
+- (BOOL)shouldAutorotate;
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation;
+</code></pre>
+
+<p>我们先实现了一个名为 <code>ImagePickerReplaceMethodsHolder</code> 的类，用于定义替换后的方法和实现。如下所示：</p>
+
+<pre><code class="objc">// ImagePickerReplaceMethodsHolder.h
+@interface ImagePickerReplaceMethodsHolder : NSObject
+
+- (BOOL)shouldAutorotate;
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation;
+
+@end
+
+// ImagePickerReplaceMethodsHolder.m
+@implementation ImagePickerReplaceMethodsHolder
+
+- (BOOL)shouldAutorotate {
+    return NO;
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
+    return UIInterfaceOrientationPortrait;
+}
+
+
+@end
+</code></pre>
+
+<p>然后，我们在调用处，判断当前的 iOS 版本，对于[iOS6.0, iOS6.1)之间的版本，我们将 <code>UIImagePickerController</code> 的有问题的方法替换。具体代码如下：</p>
+
+<pre><code class="objc">#define SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
+#define SYSTEM_VERSION_LESS_THAN(v)                 ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] == NSOrderedAscending)
+
++ (void)load {
+    static dispatch_once_t onceToken;
+    dispatch_once(&amp;onceToken, ^{
+        [self hackForImagePicker];
+    });
+}
+
++ (void)hackForImagePicker {
+    // fix bug of image picker under iOS 6.0
+    // http://stackoverflow.com/questions/12522491/crash-on-presenting-uiimagepickercontroller-under-ios-6-0
+    if (SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(@"6.0")
+        &amp;&amp; SYSTEM_VERSION_LESS_THAN(@"6.1")) {
+        Method oldMethod1 = class_getInstanceMethod([UIImagePickerController class], @selector(shouldAutorotate));
+        Method newMethod1 = class_getInstanceMethod([ImagePickerReplaceMethodsHolder class], @selector(shouldAutorotate));
+        method_setImplementation(oldMethod1, method_getImplementation(newMethod1));
+
+        Method oldMethod2 = class_getInstanceMethod([UIImagePickerController class], @selector(preferredInterfaceOrientationForPresentation));
+        Method newMethod2 = class_getInstanceMethod([ImagePickerReplaceMethodsHolder class], @selector(preferredInterfaceOrientationForPresentation));
+        method_setImplementation(oldMethod2, method_getImplementation(newMethod2));
+    }
+}
+</code></pre>
+
+<p>通过如上代码，我们就针对 iOS 特定版本的有问题的系统库函数打了 Patch，使问题得到解决。</p>
+
+<h2>开源界的使用</h2>
+
+<p>有少量不明真相的同学以为苹果在审核时会拒绝 App 使用以上 API，这其实是对苹果的误解。使用如上 API 是安全的。另外，开源界也对以上方法都适当的使用。例如：</p>
+
+<ul>
+<li><p>著名的网络库 <strong>AFNetworking</strong>。<strong>AFNetworking</strong> 网络库(v1.x版本)使用了 <code>class_replaceMethod</code> 方法（AFHTTPRequestOperation.m文件第105行）</p></li>
+<li><p>Nimbus。Nimbus 是著名的工具类库，它在其 core 模块中提供了 NIRuntimeClassModifications.h文件，用于提供上述 API 的封装。</p></li>
+<li><p>国内的大众点评 iOS 客户端。该客户端使用了他们自己开发的基于 Wax 修改而来的 <a href="https://github.com/mmin18/WaxPatch">WaxPatch</a>，WaxPatch 可以实现通过服务器更新来动态修改客户端的逻辑。而 WaxPatch 主要是修改了 Wax 中的 wax_instance.m文件，在其中加入了 <code>class_replaceMethod</code> 来替换原始实现，从而实现修改客户端的原有行为。</p></li>
+</ul>
+
+
+<h2>总结</h2>
+
+<p>通过本文，我们了解到了 Objective-C 语言的对象模型，以及 Objective-C 语言对象模型中对 <strong>isa swizzling</strong> 和 <strong>method swizzling</strong> 的支持。本文也通过具体的实例代码和开源项目，让我们对该对象模型提供的动态性有了更加深刻的认识。</p>
+
+<h2>后记</h2>
+
+<p>文章发表后，一些同行指出在 ARM64 的 CP U下，<strong>isa</strong> 的内部结构有变化。这点我是知道的，不过希望以后再撰文讨论。感兴趣的同学可以查看苹果今年WWDC2013的视频：《Session 404 Advanced in Objective-C》。</p>
+
+<h2>参考链接</h2>
+
+<ul>
+<li><p><a href="https://developer.apple.com/library/mac/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Introduction/Introduction.html">https://developer.apple.com/library/mac/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Introduction/Introduction.html</a></p></li>
+<li><p><a href="http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html">http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html</a></p></li>
+<li><p><a href="http://www.devalot.com/articles/2011/11/objc-object-model.html">http://www.devalot.com/articles/2011/11/objc-object-model.html</a></p></li>
+<li><p><a href="http://www.cocoawithlove.com/2010/01/what-is-meta-class-in-objective-c.html">http://www.cocoawithlove.com/2010/01/what-is-meta-class-in-objective-c.html</a></p></li>
+<li><p><a href="http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html">http://www.sealiesoftware.com/blog/archive/2009/04/14/objc_explain_Classes_and_metaclasses.html</a></p></li>
+<li><p><a href="http://wwwmain.gnustep.org/resources/downloads.php">gunstep的实现源码</a></p></li>
+<li><p><a href="http://algorithm.com.au/downloads/talks/objective-c-internals/objective-c-internals.pdf">http://algorithm.com.au/downloads/talks/objective-c-internals/objective-c-internals.pdf</a></p></li>
+<li><p><a href="http://opensource.apple.com/source/objc4/objc4-532/runtime/">http://opensource.apple.com/source/objc4/objc4-532/runtime/</a></p></li>
+<li><p><a href="https://github.com/AFNetworking/AFNetworking">https://github.com/AFNetworking/AFNetworking</a></p></li>
+<li><p><a href="https://github.com/jverkoey/nimbus">https://github.com/jverkoey/nimbus</a></p></li>
+<li><p><a href="https://github.com/mmin18/WaxPatch">https://github.com/mmin18/WaxPatch</a></p></li>
+</ul>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[使用 GCD]]></title>
+    <link href="http://orinchen.github.io/blog/2014/03/15/use-gcd/"/>
+    <updated>2014-03-15T10:35:36+08:00</updated>
+    <id>http://orinchen.github.io/blog/2014/03/15/use-gcd</id>
+    <content type="html"><![CDATA[<p>本文转载自:<a href="http://blog.devtang.com/blog/2012/02/22/use-gcd/">唐巧的技术博客</a></p>
+
+<h2>什么是GCD</h2>
+
+<p>Grand Central Dispatch (GCD)是 Apple 开发的一个多核编程的解决方法。该方法在 Mac OS X 10.6 雪豹中首次推出，并随后被引入到了 iOS4.0 中。GCD 是一个替代诸如 NSThread, NSOperationQueue, NSInvocationOperation 等技术的很高效和强大的技术，它看起来象就其它语言的闭包(Closure)一样，但苹果把它叫做 blocks。</p>
+
+<!--more-->
+
+
+<h2>应用举例</h2>
+
+<p>让我们来看一个编程场景。我们要在 iPhone 上做一个下载网页的功能，该功能非常简单，就是在 iPhone 上放置一个按钮，点击该按钮时，显示一个转动的圆圈，表示正在进行下载，下载完成之后，将内容加载到界面上的一个文本控件中。</p>
+
+<h2>不用GCD前</h2>
+
+<p>虽然功能简单，但是我们必须把下载过程放到后台线程中，否则会阻塞UI线程显示。所以，如果不用 GCD, 我们需要写如下3个方法：</p>
+
+<ul>
+<li>someClick 方法是点击按钮后的代码，可以看到我们用 NSInvocationOperation 建了一个后台线程，并且放到 NSOperationQueue 中。后台线程执行 download 方法。</li>
+<li>download 方法处理下载网页的逻辑。下载完成后用 performSelectorOnMainThread 执行download_completed 方法。</li>
+<li>download_completed 进行 clear up 的工作，并把下载的内容显示到文本控件中。</li>
+</ul>
+
+
+<p>这3个方法的代码如下。可以看到，虽然 开始下载 –> 下载中 –> 下载完成 这3个步骤是整个功能的三步。但是它们却被切分成了3块。他们之间因为是3个方法，所以还需要传递数据参数。如果是复杂的应用，数据参数很可能就不象本例子中的 NSString 那么简单了，另外，下载可能放到 Model 的类中来做，而界面的控制放到 View Controller 层来做，这使得本来就分开的代码变得更加散落。代码的可读性大大降低。</p>
+
+<pre><code class="objc">static NSOperationQueue * queue;
+
+- (IBAction)someClick:(id)sender {
+    self.indicator.hidden = NO;
+    [self.indicator startAnimating];
+    queue = [[NSOperationQueue alloc] init];
+    NSInvocationOperation * op = [[[NSInvocationOperation alloc] initWithTarget:self selector:@selector(download) object:nil] autorelease];
+    [queue addOperation:op];
+}
+
+- (void)download {
+    NSURL * url = [NSURL URLWithString:@"http://www.youdao.com"];
+    NSError * error;
+    NSString * data = [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:&amp;error];
+    if (data != nil) {
+        [self performSelectorOnMainThread:@selector(download_completed:) withObject:data waitUntilDone:NO];
+    } else {
+        NSLog(@"error when download:%@", error);
+        [queue release];
+    }
+}
+
+- (void) download_completed:(NSString *) data {
+    NSLog(@"call back");
+    [self.indicator stopAnimating];
+    self.indicator.hidden = YES;
+    self.content.text = data;
+    [queue release];
+}
+</code></pre>
+
+<h2>使用GCD后</h2>
+
+<p>如果使用 GCD，以上3个方法都可以放到一起，如下所示：</p>
+
+<pre><code class="objc">// 原代码块一
+self.indicator.hidden = NO;
+[self.indicator startAnimating];
+dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    // 原代码块二
+    NSURL * url = [NSURL URLWithString:@"http://www.youdao.com"];
+    NSError * error;
+    NSString * data = [NSString stringWithContentsOfURL:url encoding:NSUTF8StringEncoding error:&amp;error];
+    if (data != nil) {
+        // 原代码块三
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.indicator stopAnimating];
+            self.indicator.hidden = YES;
+            self.content.text = data;
+        });
+    } else {
+        NSLog(@"error when download:%@", error);
+    }
+});
+</code></pre>
+
+<p>首先我们可以看到，代码变短了。因为少了原来3个方法的定义，也少了相互之间需要传递的变量的封装。</p>
+
+<p>另外，代码变清楚了，虽然是异步的代码，但是它们被 GCD 合理的整合在一起，逻辑非常清晰。如果应用上 MVC 模式，我们也可以将 View Controller 层的回调函数用 GCD 的方式传递给 Modal 层，这相比以前用 @selector 的方式，代码的逻辑关系会更加清楚。</p>
+
+<h2>GCD的定义</h2>
+
+<p>简单 GCD 的定义有点象函数指针，差别是用 ^ 替代了函数指针的 * 号，如下所示：</p>
+
+<pre><code class="objc">// 申明变量
+ (void) (^loggerBlock)(void);
+ // 定义
+
+ loggerBlock = ^{
+      NSLog(@"Hello world");
+ };
+ // 调用
+ loggerBlock();
+</code></pre>
+
+<p>但是大多数时候，我们通常使用内联的方式来定义它，即将它的程序块写在调用的函数里面，例如这样：</p>
+
+<pre><code class="objc">dispatch_async(dispatch_get_global_queue(0, 0), ^{
+      // something
+ });
+</code></pre>
+
+<p>从上面大家可以看出，block 有如下特点：</p>
+
+<ol>
+<li>程序块可以在代码中以内联的方式来定义。</li>
+<li>程序块可以访问在创建它的范围内的可用的变量。</li>
+</ol>
+
+
+<h2>系统提供的 dispatch 方法</h2>
+
+<p>为了方便地使用 GCD，苹果提供了一些方法方便我们将 block 放在主线程或后台线程执行，或者延后执行。使用的例子如下：</p>
+
+<pre><code class="objc">//  后台执行：
+ dispatch_async(dispatch_get_global_queue(0, 0), ^{
+      // something
+ });
+ // 主线程执行：
+ dispatch_async(dispatch_get_main_queue(), ^{
+      // something
+ });
+ // 一次性执行：
+ static dispatch_once_t onceToken;
+ dispatch_once(&amp;onceToken, ^{
+     // code to be executed once
+ });
+ // 延迟2秒执行：
+ double delayInSeconds = 2.0;
+ dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
+ dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+     // code to be executed on the main queue after delay
+ });
+</code></pre>
+
+<p>dispatch_queue_t 也可以自己定义，如要要自定义 queue，可以用 dispatch_queue_create 方法，示例如下：</p>
+
+<pre><code class="objc">dispatch_queue_t urls_queue = dispatch_queue_create("blog.devtang.com", NULL);
+dispatch_async(urls_queue, ^{
+     // your code
+});
+dispatch_release(urls_queue);
+</code></pre>
+
+<p>另外，GCD 还有一些高级用法，例如让后台2个线程并行执行，然后等2个线程都结束后，再汇总执行结果。这个可以用 dispatch_group, dispatch_group_async 和 dispatch_group_notify 来实现，示例如下：</p>
+
+<pre><code class="objc">dispatch_group_t group = dispatch_group_create();
+ dispatch_group_async(group, dispatch_get_global_queue(0,0), ^{
+      // 并行执行的线程一
+ });
+ dispatch_group_async(group, dispatch_get_global_queue(0,0), ^{
+      // 并行执行的线程二
+ });
+ dispatch_group_notify(group, dispatch_get_global_queue(0,0), ^{
+      // 汇总结果
+ });
+</code></pre>
+
+<h2>修改block之外的变量</h2>
+
+<p>默认情况下，在程序块中访问的外部变量是复制过去的，即写操作不对原变量生效。但是你可以加上 __block 来让其写操作生效，示例代码如下：</p>
+
+<pre><code class="objc">__block int a = 0;
+ void  (^foo)(void) = ^{
+      a = 1;
+ }
+ foo();
+ // 这里，a的值被修改为1
+</code></pre>
+
+<h2>后台运行</h2>
+
+<p>使用 block 的另一个用处是可以让程序在后台较长久的运行。在以前，当 app 被按 home 键退出后，app 仅有最多5秒钟的时候做一些保存或清理资源的工作。但是应用可以调用UIApplication 的 beginBackgroundTaskWithExpirationHandler 方法，让app最多有 10 分钟的时间在后台长久运行。这个时间可以用来做清理本地缓存，发送统计数据等工作。</p>
+
+<p>让程序在后台长久运行的示例代码如下：</p>
+
+<pre><code class="objc">// AppDelegate.h文件
+@property (assign, nonatomic) UIBackgroundTaskIdentifier backgroundUpdateTask;
+
+// AppDelegate.m文件
+- (void)applicationDidEnterBackground:(UIApplication *)application
+{
+    [self beingBackgroundUpdateTask];
+    // 在这里加上你需要长久运行的代码
+    [self endBackgroundUpdateTask];
+}
+
+- (void)beingBackgroundUpdateTask
+{
+    self.backgroundUpdateTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
+        [self endBackgroundUpdateTask];
+    }];
+}
+
+- (void)endBackgroundUpdateTask
+{
+    [[UIApplication sharedApplication] endBackgroundTask: self.backgroundUpdateTask];
+    self.backgroundUpdateTask = UIBackgroundTaskInvalid;
+}
+</code></pre>
+
+<h2>总结</h2>
+
+<p>总体来说，GCD 能够极大地方便开发者进行多线程编程。大家应该尽量使用 GCD 来处理后台线程和 UI 线程的交互。</p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[玩转字符串]]></title>
+    <link href="http://orinchen.github.io/blog/2014/03/07/working-with-strings/"/>
+    <updated>2014-03-07T23:32:36+08:00</updated>
+    <id>http://orinchen.github.io/blog/2014/03/07/working-with-strings</id>
+    <content type="html"><![CDATA[<p>在每个应用里我们都大量使用字符串。下面我们将快速看看一些常见的操作字符串的方法，过一遍常见操作的最佳实践。</p>
+
+<!--more-->
+
+
+<h2>字符串的比较、搜索和排序</h2>
+
+<p>排序和比较字符串比第一眼看上去要复杂得多。不只是因为字符串可以包含 <strong>代理对（surrogate pairs）</strong> (详见 <a href="http://www.objc.io/issue-9/unicode.html#peculiar-unicode-features">Ole 写的这篇关于 Unicode 的文章</a>) ，而且比较还与字符串的本地化相关。在某些极端情况下相当棘手。</p>
+
+<p>苹果文档中 <strong><em>String Programming Guide</em></strong> 里有一节叫做<strong>“字符与字形集群（Characters and Grapheme Clusters）”</strong>，里面提到一些陷阱。例如对于排序来说，一些欧洲语言将序列“ch”当作单个字母。在一些语言里，“ä”被认为等同于“a”，而在其它语言里它却被排在“z”后面。</p>
+
+<p>而 <code>NSString</code> 有一些方法来帮助我们处理这种复杂性。首先看下面的方法：</p>
+
+<pre><code class="objc">- (NSComparisonResult)compare:(NSString *)aString 
+                      options:(NSStringCompareOptions)mask 
+                        range:(NSRange)range 
+                       locale:(id)locale
+</code></pre>
+
+<p>它带给我们充分的灵活性。另外，还有很多“便捷函数”都使用了这个方法。
+与比较有关的可用参数如下：</p>
+
+<pre><code class="objc">NSCaseInsensitiveSearch
+NSLiteralSearch
+NSNumericSearch
+NSDiacriticInsensitiveSearch
+NSWidthInsensitiveSearch
+NSForcedOrderingSearch
+</code></pre>
+
+<p>它们都可以用逻辑或运算组合在一起。</p>
+
+<ul>
+<li><p><code>NSCaseInsensitiveSearch</code>：“A”等同于“a”，然而在某些地方还有更复杂的情况。例如，在德国，“ß” 和“SS”是等价的。</p></li>
+<li><p><code>NSLiteralSearch</code>：Unicode 的点对 Unicode 点比较。它只在所有字符都用相同的方式组成的情况下才会返回相等。LATIN CAPITAL LETTER A 加上 COMBINING RING ABOVE 并不等同于 LATIN CAPITAL LETTER A WITH RING ABOVE.</p></li>
+</ul>
+
+
+<blockquote><p>译注：这个要解释一下，首先，每一个Unicode都是有官方名字的！LATIN CAPITAL  LETTER A是一个大写“A”，COMBINING RING ABOVE是一个  ̊，LATIN CAPITAL LETTER A WITH RING ABOVE，这是Å前两者的组合不等同于后者。</p>
+
+<p>Clients that use persistent connections SHOULD limit the number of simultaneous connections that they maintain to a given server. A single-user client SHOULD NOT maintain more than 2 connections with any server or proxy. A proxy SHOULD use up to 2*N connections to another server or proxy, where N is the number of simultaneously active users. These guidelines are intended to improve HTTP response times and avoid congestion.</p></blockquote>
+
+<p> <blockquote><p>Clients that use persistent connections SHOULD limit the number of simultaneous connections that they maintain to a given server. A single-user client SHOULD NOT maintain more than 2 connections with any server or proxy. A proxy SHOULD use up to 2*N connections to another server or proxy, where N is the number of simultaneously active users. These guidelines are intended to improve HTTP response times and avoid congestion.</p><footer><strong><a href="http://www.w3.org/Protocols/rfc2616/rfc2616-sec8.html#sec8.1.4</strong> <cite>&#8220;>http://www.w3.org/Protocols/rfc2616/rfc2616-sec8.html#sec8.1.4</cite></footer></blockquote></p>
+
+<ul>
+<li><p><code>NSNumericSearch</code>：它对字符串里的数字排序，所以 “Section 9” &lt; “Section 20” &lt; “Section 100.”</p></li>
+<li><p><code>NSDiacriticInsensitiveSearch</code> : “A”等同于“Å”等同于“Ä.”</p></li>
+<li><p><code>NSWidthInsensitiveSearch</code> : 一些东亚文字（平假名 和 片假名）有全宽与半宽两种形式。
+很值得一提的是 <code>- (NSComparisonResult)localizedStandardCompare:</code>，它排序的方式和 Finder 一样。它对应的选项是 <code>NSCaseInsensitiveSearch</code>、<code>NSNumericSearch</code>、 <code>NSWidthInsensitiveSearch</code> 以及 <code>NSForcedOrderingSearch</code> 。如果我们要在UI上显示一个文件列表，用它就最合适不过了。</p></li>
+</ul>
+
+
+<p>大小写不敏感的比较和音调符号不敏感的比较都是相对复杂和昂贵的操作。如果我们需要比较很多次字符串那这就会成为一个性能上的瓶颈（例如对一个大的数据集进行排序），一个常见的解决方法是同时存储原始字符串和折叠字符串。例如，我们的 <code>Contact</code>  类有一个正常的 <code>name</code>  属性，在内部它还有一个 <code>foldedName</code>  属性，它将自动在 <code>name</code> 变化时更新。那么我们就可以使用 <code>NSLiteralSearch</code>  来比较 <code>name</code> 的折叠版本。<code>NSString</code> 有一个方法来创建折叠版本：</p>
+
+<pre><code class="objc">- (NSString *)stringByFoldingWithOptions:(NSStringCompareOptions)options 
+                                  locale:(NSLocale *)locale
+</code></pre>
+
+<h2>搜索</h2>
+
+<p>要在一个字符串中搜索子字符串，最灵活性的方法是:</p>
+
+<pre><code class="objc">- (NSRange)rangeOfString:(NSString *)aString 
+                 options:(NSStringCompareOptions)mask 
+                   range:(NSRange)searchRange 
+                  locale:(NSLocale *)locale
+</code></pre>
+
+<p>同时，还有一些“便捷方法”，它们在最终都会调用上面这个方法，我们可以传入上面列出的参数，以及以下这些额外的参数：</p>
+
+<pre><code class="objc">NSBackwardsSearch
+NSAnchoredSearch
+NSRegularExpressionSearch
+</code></pre>
+
+<ul>
+<li><p><code>NSBackwardsSearch</code>：在字符串的末尾开始反向搜索。</p></li>
+<li><p><code>NSAnchoredSearch</code>： 只考虑搜索的起始点（单独使用）或终止点（当与  <code>NSBackwardsSearch</code> 结合使用时）。这个方法可以用来检查前缀或者后缀，以及 <em>大小写不敏感（case-insensitive）</em>或者 <em>音调不敏感（diacritic-insensitive）</em>的比较。</p></li>
+<li><p><code>NSRegularExpressionSearch</code>：使用正则表达式搜索，要了解更多与使用正则表达式有关的信息，请关注 Chris’s 的 String Parsing 。</p></li>
+</ul>
+
+
+<p>另外，还有一个方法：</p>
+
+<pre><code class="objc">- (NSRange)rangeOfCharacterFromSet:(NSCharacterSet *)aSet 
+                           options:(NSStringCompareOptions)mask 
+                             range:(NSRange)aRange
+</code></pre>
+
+<p>与前面搜索字符串不同的是， 它只搜索给定字符集的第一个字符。即使只搜索一个字符，但如果由于此字符是由元字符组成的序列（composed character sequence），所以返回范围的长度也可能大于1。</p>
+
+<h2>大写与小写</h2>
+
+<p>一定不要使用 <code>NSString</code> 的 <code>-uppercaseString</code>  或者 <code>-lowercaseString</code> 的方法来处理 UI 显示的字符串，而应该使用 <code>-uppercaseStringWithLocale</code> 来代替， 比如：</p>
+
+<pre><code class="objc">NSString *name = @"Tómas"; 
+cell.text = [name uppercaseStringWithLocale:[NSLocale currentLocale]];
+</code></pre>
+
+<h2>格式化字符串</h2>
+
+<p>同 <strong>C</strong> 语言中的 <code>sprintf</code> 函数( ANSI C89 中的一个函数 )类似, <strong>Objective-C</strong> 中的 <code>NSString</code> 类也有如下的3个方法:</p>
+
+<pre><code class="objc">-initWithFormat:
+-initWithFormat:arguments:
++stringWithFormat:
+</code></pre>
+
+<p>需要注意这些格式化方法都是 <strong><em>非本地化</em></strong> 的 。所以这些方法得到的字符串是不能直接拿来显示在用户界面上的。如果需要本地化，那我们需要使用下面这些方法:</p>
+
+<pre><code class="objc">-initWithFormat:locale:
+-initWithFormat:locale:arguments:
++localizedStringWithFormat:
+</code></pre>
+
+<p>Florian 有一篇关于<a href="http://www.objc.io/issue-9/string-localization.html#localized-format-strings">字符串的本地化</a>的文章更详细地讨论了这个问题。</p>
+
+<p><a href="http://linux.die.net/man/3/printf">printf(3)</a>的man页面有关于它如何格式化字符串的全部细节。除了所谓的转换格式（它以％字符开始），格式化字符串会被逐字复制：</p>
+
+<pre><code class="objc">double a = 25812.8074434;
+float b = 376.730313461;
+NSString *s = [NSString stringWithFormat:@"%g :: %g", a, b];
+// "25812.8 :: 376.73"
+</code></pre>
+
+<p>我们格式化了两个浮点数。注意单精度浮点数和双精度浮点数能同一个转换格式。</p>
+
+<h2>对象</h2>
+
+<p>除了来自 <a href="http://linux.die.net/man/3/printf">printf(3)</a> 的转换规范，我们还可以使用 <code>%@</code> 来输出一个对象。在对象描述那一节中有述，如果对象响应 <code>-descriptionWithLocale:</code> 方法，则调用它，否则调用 <code>-description</code>。<code>%@</code> 被结果替换。</p>
+
+<h2>整数</h2>
+
+<p>使用整形数字时，有些需要注意的细节。首先，有符号数（d和i）和无符号数（o、u、x和X）分别有转换规范。需要使用者选择具体的类型。
+如果我们使用的东西是 <code>printf</code> 不知道的，我们必须要做类型转换。<code>NSUInteger</code> 正是这样一个例子，它在64位和32位平台上是不一样的。下面的例子可以同时工作在32位和64位平台。</p>
+
+<pre><code class="objc">uint64_t p = 2305843009213693951;
+NSString *s = [NSString stringWithFormat:@"The ninth Mersenne prime is %llu", (unsigned long long) p];
+// "The ninth Mersenne prime is 2305843009213693951"
+</code></pre>
+
+<table>
+<thead>
+<tr>
+<th style="text-align:center;">    Modifier   </th>
+<th style="text-align:center;">      d, i      </th>
+<th style="text-align:center;">     o, u, x, X        </th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center;">  hh           </td>
+<td style="text-align:center;">  signed char   </td>
+<td style="text-align:center;">  unsigned char        </td>
+</tr>
+<tr>
+<td style="text-align:center;">  h            </td>
+<td style="text-align:center;">  short         </td>
+<td style="text-align:center;">  unsigned short       </td>
+</tr>
+<tr>
+<td style="text-align:center;">  (none)       </td>
+<td style="text-align:center;">  int           </td>
+<td style="text-align:center;">  unsigned int         </td>
+</tr>
+<tr>
+<td style="text-align:center;">  l (ell)      </td>
+<td style="text-align:center;">  long          </td>
+<td style="text-align:center;">  unsigned long        </td>
+</tr>
+<tr>
+<td style="text-align:center;">  ll (ell ell) </td>
+<td style="text-align:center;">  long long     </td>
+<td style="text-align:center;">  unsigned long long   </td>
+</tr>
+<tr>
+<td style="text-align:center;">  j            </td>
+<td style="text-align:center;">  intmax_t      </td>
+<td style="text-align:center;">  uintmax_t            </td>
+</tr>
+<tr>
+<td style="text-align:center;">  t            </td>
+<td style="text-align:center;">  ptrdiff_t     </td>
+<td style="text-align:center;">                       </td>
+</tr>
+<tr>
+<td style="text-align:center;">  z            </td>
+<td style="text-align:center;">                </td>
+<td style="text-align:center;">  size_t               </td>
+</tr>
+</tbody>
+</table>
+
+
+<p>适用于整数的转换规则有：</p>
+
+<pre><code class="objc">int m = -150004021;
+uint n = 150004021U;
+NSString *s = [NSString stringWithFormat:@"d:%d i:%i o:%o u:%u x:%x X:%X", m, m, n, n, n, n];
+// "d:-150004021 i:-150004021 o:1074160465 u:150004021 x:8f0e135 X:8F0E135"
+</code></pre>
+
+<p><code>%d</code> 和 <code>%i</code> 具有一样的功能，它们都打印出有符号十进制数。<code>%o</code> 就较为晦涩了：它使用八进制表示。<code>%u</code> 输出无符号十进制数——它是我们常用的。最后 <code>%x</code> 和 <code>%X</code> 使用十六进制表示——后者使用大写字母。</p>
+
+<p>对于 <code>x%</code> 和 <code>X%</code>，我们可以在 0x 前面添加 “#” 井字符前缀看，增加可读性。
+我们可以传入特定参数，来设置最小字段宽度和最小数字位数（默认两者都是0），以及左/右对齐。请查看man页面获取详细信息。下面是一些例子：</p>
+
+<pre><code class="objc">int m = 42;
+NSString *s = [NSString stringWithFormat:@"'%4d' '%-4d' '%+4d' '%4.3d' '%04d'", m, m, m, m, m];
+// ‘42’ ‘42 ’ ‘ +42’ ‘ 042’ ‘0042’
+m = -42;
+NSString *s = [NSString stringWithFormat:@"'%4d' '%-4d' '%+4d' '%4.3d' '%04d'", m, m, m, m, m];
+// ‘ -42’ ‘-42 ’ ‘ -42’ ‘-042’ ‘-042’
+</code></pre>
+
+<p>%p  可用于打印出指针——它和 %#x  相似但可同时在32位和64位平台上正常工作。</p>
+
+<h2>浮点数</h2>
+
+<p>关于浮点数的转换规则有8个：eEfFgGaA。但除了 <code>%f</code> 和 <code>%g</code> 外我们很少使用其它的。对于指数部分，小写的版本使用小写 e，大写的版本就使用大写 E。
+通常 <code>%g</code>  是浮点数的全能转换符 ，它与 <code>%f</code>  的不同在下面的例子里显示得很清楚：</p>
+
+<pre><code class="objc">double v[5] = {12345, 12, 0.12, 0.12345678901234, 0.0000012345678901234};
+NSString *s = [NSString stringWithFormat:@"%g %g %g %g %g", v[0], v[1], v[2], v[3], v[4]];
+// "12345 12 0.12 0.123457 1.23457e-06"
+NSString *s = [NSString stringWithFormat:@"%f %f %f %f %f", v[0], v[1], v[2], v[3], v[4]];
+// "12345.000000 12.000000 0.120000 0.123457 0.000001"
+</code></pre>
+
+<p>和整数一样，我们依然可以指定最小字段宽度和最小数字数。</p>
+
+<h2>指定位置</h2>
+
+<p>格式化字符串允许使用参数来改变顺序：</p>
+
+<pre><code class="objc">[NSString stringWithFormat:@"%2$@ %1$@", @"1st", @"2nd"];
+// "2nd 1st"
+</code></pre>
+
+<p>我们只需将从1开始的参数与一个$接在%后面。这种写法在进行本地化的时候极其常见，因为在不同语言中，各个参数所处的顺序位置可能不尽相同。</p>
+
+<h2>NSLog()</h2>
+
+<p><code>NSLog()</code> 函数与 <code>+stringWithFormat:</code> 的工作方式一样。我们可以调用：</p>
+
+<pre><code class="objc">int magic = 42;
+NSLog(@"The answer is %d", magic);
+</code></pre>
+
+<p>下面的代码可以用同样的方式构造字符串：</p>
+
+<pre><code class="objc">int magic = 42;
+NSString *output = [NSString stringWithFormat:@"The answer is %d", magic];
+</code></pre>
+
+<p>显然 <code>NSLog()</code> 会输出字符串，并且它会加上时间戳、进程名、进程ID以及线程ID作为前缀。</p>
+
+<h2>实现能接受格式化字符串的方法</h2>
+
+<p>有时在我们自己的类中提供一个能接受格式化字符串的方法会很方便使用。假设我们要实现的是一个 To Do 应用，它包含一个 <code>Item</code> 类。我们想要提供：</p>
+
+<pre><code class="objc">+ (instancetype)itemWithTitleFormat:(NSString *)format, ...
+</code></pre>
+
+<p>如此我们就可以使用：</p>
+
+<pre><code class="objc">Item *item = [Item itemWithFormat:@"Need to buy %@ for %@", food, pet];
+</code></pre>
+
+<p>这种类型的方法可以接受可变数量的参数，所以被称为可变参数方法。我们必须使用一个定义在 <code>stdarg.h</code> 里的宏来使用可变参数。上面方法的实现代码可能会像下面这样：</p>
+
+<pre><code class="objc">+ (instancetype)itemWithTitleFormat:(NSString *)format, ...;
+{
+    va_list ap;
+    va_start(ap, format);
+    NSString *title = [[NSString alloc] initWithFormat:format locale:[NSLocale currentLocale] arguments:ap];
+    va_end(ap);
+    return [self itemWithTitle:title];
+}
+</code></pre>
+
+<p>进一步，我们要添加 <code>NS_FORMAT_FUNCTION</code> 到方法的定义里（在头文件中），如下所示：</p>
+
+<pre><code class="objc">+ (instancetype)itemWithTitleFormat:(NSString *)format, ... NS_FORMAT_FUNCTION(1,2);
+</code></pre>
+
+<p><code>NS_FORMAT_FUNCTION</code> 展开为一个方法 <code>__attribute__</code>，它会告诉编译器在索引 1 处的参数是一个格式化字符串，而实际参数从索引2开始。这将允许编译器检查格式化字符串而且会像 <code>NSLog()</code> 和 <code>-[NSString stringWithFormat:]</code> 一样输出警告信息。</p>
+
+<h2>字符与字符串组件</h2>
+
+<p>如有一个字符串“bird”，找出组成它的独立字母是很简单的。第二个字母是“i”（Unicode: LATIN SMALL LETTER I）。而对于像Åse这样的字符串就没那么简单了。看起来像三个字母的组合可有多种方式，例如：</p>
+
+<pre><code>A LATIN CAPITAL LETTER A
+̊ COMBINING RING ABOVE
+s LATIN SMALL LETTER S
+e LATIN SMALL LETTER E
+</code></pre>
+
+<p>或者</p>
+
+<pre><code>Å LATIN CAPITAL LETTER A WITH RING ABOVE
+s LATIN SMALL LETTER S
+e LATIN SMALL LETTER E
+</code></pre>
+
+<p>从 <a href="http://www.objc.io/issue-9/unicode.html#peculiar-unicode-features">Ole 写的这篇关于 Unicode 的文章</a> 里可以读到更多关于联合标记（<strong>combining marks</strong>）的信息，其他语言文字有更多复杂的代理对（<strong>complicated surrogate pairs</strong>）。</p>
+
+<p>如果我们要在字符层面处理一个字符串，那我们就要小心翼翼。苹果官方文档中 <strong>String Programming Guide</strong> 有一节叫做 “<strong>Characters and Grapheme Clusters</strong>”，里面有更多关于这一点的细节。</p>
+
+<p><code>NSString</code> 有两个方法：</p>
+
+<pre><code class="objc">-rangeOfComposedCharacterSequencesForRange:
+-rangeOfComposedCharacterSequenceAtIndex:
+</code></pre>
+
+<p>上面这两个方法在有的时候很有帮助，例如，分开一个字符串时保证我们不会分开被称为代理对（<strong>surrogate pairs</strong>）的东西。</p>
+
+<p>如果我们要在字符串的字符上做工作，<code>NSString</code> 有个叫做 <code>-enumerateSubstringsInRange:options:usingBlock:</code> 的方法。
+将 <code>NSStringEnumerationByComposedCharacterSequences</code> 作为选项传递，我们就能扫描所有的字符。例如，用下面的方法，我们可将字符串 “International Business Machines” 变成 “IBM”。</p>
+
+<pre><code class="objc">- (NSString *)initials;
+{
+    NSMutableString *result = [NSMutableString string];
+    [self enumerateSubstringsInRange:NSMakeRange(0, self.length) 
+                             options:NSStringEnumerationByWords | NSStringEnumerationLocalized 
+                          usingBlock:^(NSString *word, NSRange wordRange, NSRange enclosingWordRange, BOOL *stop1) {
+        __block NSString *firstLetter = nil;
+        [self enumerateSubstringsInRange:NSMakeRange(0, word.length) 
+                                 options:NSStringEnumerationByComposedCharacterSequences 
+                              usingBlock:^(NSString *letter, NSRange letterRange, NSRange enclosingLetterRange, BOOL *stop2) {
+            firstLetter = letter;
+            *stop2 = YES;
+        }];
+        if (letter != nil) {
+            [result appendString:letter];
+        };
+    }];
+    return result;
+}
+</code></pre>
+
+<p>如文档所示，词和句的分界可能基于地区的变化而变化。因此有 <code>NSStringEnumerationLocalized</code> 选项。</p>
+
+<h2>多行文字字面量</h2>
+
+<p>编译器的确有一个隐蔽的特性：把空格分隔开的字符串衔接到一起。这是什么意思呢？下面两段代码是完全等价的：</p>
+
+<pre><code class="objc">NSString *limerick = @"A lively young damsel named Menzies\n"
+@"Inquired: «Do you know what this thenzies?»\n"
+@"Her aunt, with a gasp,\n"
+@"Replied: "It's a wasp,\n"
+@"And you're holding the end where the stenzies.\n";
+</code></pre>
+
+<p>和</p>
+
+<pre><code class="objc">NSString *limerick = @"A lively young damsel named Menzies\nInquired: «Do you know what this thenzies?»\nHer aunt, with a gasp,\nReplied: "It's a wasp,\nAnd you're holding the end where the stenzies.\n";
+</code></pre>
+
+<p>前者看起来更舒服，但是有一点要注意千万不要在任意一行末尾加入逗号或者分号。
+同时也可以这样做：</p>
+
+<pre><code class="objc">NSString * string = @"The man " @"who knows everything " @"learns nothing" @".";
+</code></pre>
+
+<blockquote><p>*译者注：上面这行代码原文是有误的，原文是</p>
+
+<pre><code class="objc">NSString *@"The man " @"who knows everything " @"learns nothing" @".";
+</code></pre>
+
+<p>读者可以尝试一下，如果这样写是无法通过编译的;</p></blockquote>
+
+<p>编译器只是为我们提供了一个便捷的方式，将多个字符串在编译期组合在了一起。</p>
+
+<h2>可变字符串</h2>
+
+<p>可变字符串有两个常见的使用场景：</p>
+
+<blockquote><ol>
+<li>拼接字符串</li>
+<li>替换部分字符串</li>
+</ol>
+</blockquote>
+
+<h3>创建字符串</h3>
+
+<p>可变字符串可以很轻易地把多个字符串在你需要的时候组合起来。</p>
+
+<pre><code class="objc">- (NSString *)magicToken
+{
+    NSMutableString *string = [NSMutableString string];
+    if (usePrefix) {
+        [string appendString:@"&gt;&gt;&gt;"];
+    }
+    [string appendFormat:@"%d--%d", self.foo, self.bar];
+    if (useSuffix) {
+        [string appendString:@"&gt;&gt;&gt;"];
+    }
+    return string;
+}
+</code></pre>
+
+<p>这里要注意的是，虽然原本返回值应该是一个 <code>NSString</code> 类型的对象，我们只是简单地返回一个 <code>NSMutableString</code> 类型的对象。</p>
+
+<h3>替换字符串</h3>
+
+<p>可变字符串除了追加组合之外，还提供了以下4个方法：</p>
+
+<pre><code class="objc">-deleteCharactersInRange:
+-insertString:atIndex:
+-replaceCharactersInRange:withString:
+-replaceOccurrencesOfString:withString:options:range:
+</code></pre>
+
+<p>这些方法和 <code>NSString</code> 的类似：</p>
+
+<pre><code class="objc">-stringByReplacingOccurrencesOfString:withString:
+-stringByReplacingOccurrencesOfString:withString:options:range:
+-stringByReplacingCharactersInRange:withString:
+</code></pre>
+
+<p>但是它没有创建新的字符串仅仅把当前字符串变成了一个可变的类型，这样让代码更容易阅读，以及提升些许性能。</p>
+
+<pre><code class="objc">NSMutableString *string; // 假设我们已经有了一个名为 string 的字符串
+// 现在要去掉它的一个前缀，做法如下:
+NSString *prefix = @"WeDon’tWantThisPrefix"
+NSRange r = [string rangeOfString:prefix 
+                          options:NSAnchoredSearch 
+                            range:NSMakeRange(0, string.length) 
+                           locale:nil];
+if (r.location != NSNotFound) {
+    [string deleteCharactersInRange:r];
+}
+</code></pre>
+
+<h2>连接组件</h2>
+
+<p>一个看似微不足道但很常见的情况是字符串连接。比如现在有这样几个字符串：</p>
+
+<pre><code>Hildr
+Heidrun
+Gerd
+Guðrún
+Freya
+Nanna
+Siv
+Skaði
+Gróa
+</code></pre>
+
+<p>我们想用它们来创建下面这样的一个字符串：</p>
+
+<pre><code>Hildr, Heidrun, Gerd, Guðrún, Freya, Nanna, Siv, Skaði, Gróa
+</code></pre>
+
+<p>那么就可以这样做：</p>
+
+<pre><code>NSArray *names = @["Hildr", @"Heidrun", @"Gerd", @"Guðrún", @"Freya", @"Nanna", @"Siv", @"Skaði", @"Gróa"];
+NSString *result = [names componentsJoinedByString:@", "];
+</code></pre>
+
+<p>如果我们将其显示给用户，我们就要使用本地化表达，确保将最后一部分替换相应语言的 “, and” ：</p>
+
+<pre><code class="objc">@implementation NSArray (ObjcIO_GroupedComponents)
+
+- (NSString *)groupedComponentsWithLocale:(NSLocale *)locale;
+{
+    if (self.count &lt; 1) {
+        return @"";
+    } else if (self.count &lt; 2) {
+        return self[0];
+    } else if (self.count &lt; 3) {
+        NSString *joiner = NSLocalizedString(@"joiner.2components", @"");
+        return [NSString stringWithFormat:@"%@%@%@", self[0], joiner, self[1]];
+    } else {
+        NSString *joiner = [NSString stringWithFormat:@"%@ ", [locale objectForKey:NSLocaleGroupingSeparator]];
+        NSArray *first = [self subarrayWithRange:NSMakeRange(0, self.count - 1)];
+        NSMutableString *result = [NSMutableString stringWithString:[first componentsJoinedByString:joiner]];
+        NSString *lastJoiner = NSLocalizedString(@"joiner.3components", @"");
+        [result appendString:lastJoiner];
+        [result appendString:self.lastObject];
+        return result;
+    }
+}
+@end
+</code></pre>
+
+<p>那么在本地化的时候，如果是英语，应该是：</p>
+
+<pre><code class="objc">"joiner.2components" = " and ";
+"joiner.3components" = ", and ";
+</code></pre>
+
+<p>如果是德语，则应该是：</p>
+
+<pre><code class="objc">"joiner.2components" = " und ";
+"joiner.3components" = " und ";
+</code></pre>
+
+<p>结合组件的逆过程可以用 <code>-componentsSeparatedByString:</code>，这个方法会将一个字符串变成一个数组。例如，将 “12|5|3” 变成 “12”、“5” 和 “3”。</p>
+
+<h2>对象描述</h2>
+
+<p>在许多面向对象编程语言里，对象有一个叫做 <code>toString()</code> 或类似的方法。在 <strong>Objective-C</strong> 里，这个方法是：</p>
+
+<pre><code class="objc">- (NSString *)description
+</code></pre>
+
+<p>以及它的兄弟方法:</p>
+
+<pre><code class="objc">- (NSString *)debugDescription
+</code></pre>
+
+<p>当自定义模型对象时，覆写 <code>-description</code> 方法是一个好习惯，在UI上显示该对象时调用的就是 <code>-description</code> 方法的返回值。假定我们有一个 <code>Contact</code> 类，下面是它的 <code>-description</code> 方法实现。</p>
+
+<pre><code class="objc">- (NSString *)description
+{
+    return self.name;
+}
+</code></pre>
+
+<p>我们可以像下面代码这样格式化字符串：</p>
+
+<pre><code class="objc">label.text = [NSString stringWithFormat:NSLocalizedString(@"%@ has been added to the group “%@”.", @""), contact, group];
+</code></pre>
+
+<p>因为该字符串是用来做UI显示的，我们可能需要做本地化，那么我们就需要覆写</p>
+
+<pre><code class="objc ">- (NSString *)descriptionWithLocale:(NSLocale *)locale 
+</code></pre>
+
+<p>方法。</p>
+
+<p><code>%@</code> 会首先调用 <code>-descriptionWithLocale</code>，如果没有返回值，再调用 <code>-description</code>，在调试时，打印一个对象，我们用 <code>po</code> 这个命令（它是 print object 的缩写）</p>
+
+<pre><code>(lldb) po contact
+</code></pre>
+
+<p>如果在调试窗口的终端下输入 <code>po contact</code>，它会调用对象的 <code>-debugDescription</code> 方法。默认情况下 <code>-debugDescription</code> 是直接调用 <code>-description</code>。如果你希望输出不同的信息，那么就分别覆写两个方法。大多数情况下，尤其是对于非数据模型的对象，你只需要覆写 <code>-description</code> 就能满足需求了。</p>
+
+<p>实际上对象的标准格式化输出是这样的：</p>
+
+<pre><code class="objc">- (NSString *)description;
+{
+    return [NSString stringWithFormat:@"&lt;%@: %p&gt;", self.class, self];
+}
+</code></pre>
+
+<p><code>NSObject</code> 就是这么干的。当你覆写该方法时，也可以像这样写。假定我们有一个 <code>DetailViewController</code>，在它的UI上要显示一个 <code>contact</code> ，我们可能会这样覆写该方法：</p>
+
+<pre><code class="objc">- (NSString *)description;
+{
+    return [NSString stringWithFormat:@"&lt;%@: %p&gt; contact = %@", self.class, self, self.contact.debugDescription];
+}
+</code></pre>
+
+<h2>NSManagedObject 子类的描述</h2>
+
+<p>我们将特别注意向 <code>NSManagedObject</code> 的子类添加 <code>-description</code> / <code>-debugDescription</code> 的情况。由于 <strong>Core Data</strong> 的惰性加载机制（<strong>faulting mechanism</strong>）允许未加载数据的对象存在，所以当我们调用 <code>-debugDescription</code> 我们并不希望改变我们的应用程序的状态，因此我要确保检查 isFault  这个属性。例如，我们可如下这样实现它：</p>
+
+<pre><code class="objc">- (NSString *)debugDescription;
+{
+    NSMutableString *description = [NSMutableString stringWithFormat:@"&lt;%@: %p&gt;", self.class, self];
+    if (! self.isFault) {
+        [description appendFormat:@" %@ \"%@\" %gL", self.identifier, self.name, self.metricVolume];
+    }
+    return description;
+}
+</code></pre>
+
+<p>再次，因为它们是模型对象，重载 <code>-description</code> 简单地返回描述实例的属性名就可以了。</p>
+
+<h2>文件路径</h2>
+
+<p>简单来说就是我们不应该使用 <code>NSString</code> 来描述文件路径。对于 OS X 10.7 和 iOS 5， <code>NSURL</code> 更便于使用，而且更有效率，它还能缓存文件系统的属性。
+再者，<code>NSURL</code> 有八个方法来访问被称为 <strong>resource values</strong> 的东西。它们提供给我们一个稳定的接口来获取和设置文件与目录的多种属性，例如本地化文件名（<code>NSURLLocalizedNameKey</code>）、文件大小（<code>NSURLFileSizeKey</code>），以及创建日期（ <code>NSURLCreationDateKey</code>），等等。
+尤其是在遍历目录内容时，使用 <code>-[NSFileManager enumeratorAtURL:includingPropertiesForKeys:options:errorHandler:]</code> 附带一个关键词列表，然后用 <code>-getResourceValue:forKey:error:</code> 检索它们，能带来显著的性能提升。</p>
+
+<p>下面是一个简短的例子展示了如何将它们组合在一起：</p>
+
+<pre><code class="objc">NSError *error = nil;
+NSFileManager *fm = [[NSFileManager alloc] init];
+NSURL *documents = [fm URLForDirectory:NSDocumentationDirectory 
+                              inDomain:NSUserDomainMask 
+                     appropriateForURL:nil 
+                                create:NO 
+                                 error:&amp;error];
+NSArray *properties = @[NSURLLocalizedNameKey, NSURLCreationDateKey];
+NSDirectoryEnumerator *dirEnumerator = [fm enumeratorAtURL:documents
+                                includingPropertiesForKeys:properties
+                                                   options:0
+                                              errorHandler:nil];
+for (NSURL *fileURL in dirEnumerator) {
+    NSString *name = nil;
+    NSDate *creationDate = nil;
+    if ([fileURL getResourceValue:&amp;name 
+                           forKey:NSURLLocalizedNameKey 
+                            error:NULL] &amp;&amp;
+        [fileURL getResourceValue:&amp;creationDate 
+                           forKey:NSURLCreationDateKey 
+                            error:NULL])
+    {
+        NSLog(@"'%@' was created at %@", name, creationDate);
+    }
+}
+</code></pre>
+
+<p>我们把属性的键传给  <code>-enumeratorAtURL:</code> 方法中，在遍历目录内容时，这个方法能确保用非常高效的方式获取它们。在循环中，调用 <code>-getResourceValue:</code>… 能简单地从 <code>NSURL</code> 得到已缓存的值，而不用去访问文件系统。</p>
+
+<h2>传递路径到UNIX API</h2>
+
+<p>因为 Unicode 非常复杂，同一个字母有多种表示方式，所以我们需要很小心地传递路径给 UNIX API。在这些情况里，一定不能使用 <code>UTF8String</code>，正确地做法是使用 <code>-fileSystemRepresentation</code> 方法，如下：</p>
+
+<pre><code class="objc">NSURL *documentURL = [[NSFileManager defaultManager] URLForDirectory:NSDocumentDirectory 
+                                                            inDomain:NSUserDomainMask 
+                                                   appropriateForURL:nil 
+                                                              create:NO 
+                                                               error:NULL];
+documentURL = [documentURL URLByAppendingPathComponent:name];
+int fd = open(documentURL.fileSystemRepresentation, O_RDONLY);
+</code></pre>
+
+<p>与 <code>NSURL</code> 类似，同样的情况也发生在 <code>NSString</code> 上。如果我们不这么做，在打开一个文件名或路径名包含合成字符的文件时我们将看到随机错误。在 OS X 上，当用户的短名刚好包含合成字符时就会显得特别糟糕。
+我们需要一个 <code>char const *</code> 版本的路径的一些常见情况是 UNIX <code>open()</code> 和 <code>close()</code> 指令。但这也可能发生在 GCD / libdispatch 的 I/O API 上。</p>
+
+<pre><code class="objc">dispatch_io_t
+dispatch_io_create_with_path(dispatch_io_type_t type,
+        const char *path, int oflag, mode_t mode,
+        dispatch_queue_t queue,
+        void (^cleanup_handler)(int error));
+</code></pre>
+
+<p>如果我们要使用 <code>NSString</code> 来做，那我们要保证像下面这样做：</p>
+
+<pre><code class="objc">NSString *path = ... // 假设我们已经有一个名为 path 的字符串
+io = dispatch_io_create_with_path(DISPATCH_IO_STREAM,
+    path.fileSystemRepresentation,
+    O_RDONLY, 0, queue, cleanupHandler);
+</code></pre>
+
+<p><code>-fileSystemRepresentation</code> 所做的是它首先将这个字符串转换成文件系统的规范形式然后用 UTF-8 编码。</p>
+
+<p>原文链接：<a href="http://www.objc.io/issue-9/working-with-strings.html">Working with Strings</a>
+翻译：<a href="http://iosinit.com/?author=5"> 朱宏旭</a>，<a href="http://weibo.com/riven0951">riven</a>，<a href="http://weibo.com/u/1709283185?sudaref=iosinit.com">@唯木念</a>
+译文链接：<a href="http://iosinit.com/?p=854">objc.io 第9期之玩转字符串</a></p>
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[认识 TextKit]]></title>
+    <link href="http://orinchen.github.io/blog/2014/03/04/getting-to-know-textkit/"/>
+    <updated>2014-03-04T19:36:12+08:00</updated>
+    <id>http://orinchen.github.io/blog/2014/03/04/getting-to-know-textkit</id>
+    <content type="html"><![CDATA[<p>iOS7 的发布给开发者的案头带来了很多新工具。其中一个就是 TextKit（文本工具箱）。TextKit 由许多新的 UIKit 类组成，顾名思义，这些类就是用来处理文本的。在这里，我们将介绍 TextKit 的来由、它的组成，以及通过几个例子解释开发者怎样将它派上大用场。</p>
+
+<p>但是首先我们得有一点背景知识：TextKit 可能是近期对 UIKit 最重要的补充了。iOS7 的新界面用纯文本按钮替换了大量的图标和边框。总的来说，文本和文本布局在新的操作系统的外观方面比以前重要多了。iOS7 的重新设计完全是被文本驱动，这样说也许并不夸张——而文本全部是TextKit来处理的。</p>
+
+<p>告诉你这个变动到底有多大吧：iOS7 之前的所有版本，（几乎）所有的文本都是 WebKit 来处理的。对：WebKit，web 浏览器引擎。所有UILabel、UITextField，以及 UITextView 都在后台以某种方式使用 web 视图来进行文本布局和渲染。为了新的界面风格，它们全都被重新设计以使用TextKit。</p>
+
+<!--more-->
+
+
+<h2>iOS上文本的简短历史</h2>
+
+<p>这些新类并不是用来替换开发者以前使用的类。对 SDK 来说，TextKit 提供的是全新的功能。iOS7 之前，TextKit 提供的功能必须都手动完成。这是现有功能之间缺失的环节。</p>
+
+<p>长期以来，只有一个基本的文本布局和渲染框架：CoreText。也有一个途径读取用户的键盘输入：UITextInput 协议。iOS6 甚至有一个途径来简单地获取系统的文本选择：继承 UITextView。</p>
+
+<p>（这可能是重点，我应该公开我开发文本编辑器的十年经验了）在渲染文本和读取键盘输入之间存在着巨大（跟我读：巨大）的缺口。这个缺口可能也是导致很少有富文本或者语法高亮编辑器的原因了——毫无疑问，开发一个好用的文本编辑器得耗费几个月的时间。</p>
+
+<p>就这样——下面是 iOS 文本（不那么）简短历史的简短概要：</p>
+
+<ul>
+<li><p><strong>iOS 2</strong>：这是第一个公开的 SDK，包括一个简单的文本显示组件（ UILabel ），一个简单的文本输入组件（ UITextField ），以及一个简单的、可滚动、可编辑的并且支持更大量文本的组件：UITextView。这些组件都只支持纯文本，没有文本选择支持（仅支持插入点），除了设置字体和文本颜色外几乎没有其他可定制功能。</p></li>
+<li><p><strong>iOS 3</strong>：新特性有复制和粘贴，以及复制粘贴所需要的文本选择功能。数据探测器（Data Detector）为文本视图提供了一个高亮电话号码和链接的方法。然而，除了打开或关闭这些特性外，开发者基本上没有什么别的事情可以做。</p></li>
+<li><p><strong>iOS 3.2</strong>：iPad 的出现带来了 CoreText，也就是前面提到的低级文本布局和渲染引擎（从Mac OS X 10.5 移植过来的），以及 UITextInput，前面也提到的键盘存取协议。Apple 将 Pages 作为移动设备上文本编辑功能的样板工程（附注1）。然而，由于我前面提到的框架缺口，只有很少的应用使用它们。</p></li>
+<li><p><strong>iOS 4</strong>：iOS 3.2 发布仅仅几个月后就发布了，文本方面没有一丁点新功能。（个人经历：在 WWDC，我走近工程师们，告诉他们我想要一个完善的 iOS 文本布局系统。回答是：“哦…提交个请求。”不出所料…）</p></li>
+<li><p><strong>iOS 5</strong>：文本方面没啥变化。（个人经历：在 WWDC，我和工程师们谈及 iOS 上文本系统。回答是：“我们没有看到太多的请求…” 靠！）</p></li>
+<li><p><strong>iOS 6</strong>：有些动作了：属性文本编辑被加入了UITextView。很不幸的是，它很难定制。默认的UI有粗体、斜体和下划线。用户可以设置字体大小和颜色。粗看起来相当不错，但还是没法控制布局或者提供一个便利的途径来定制文本属性。然而对于（文本编辑）开发者，有一个大的新功能：可以继承 UITextView 了，这样的话，除了以前版本提供的键盘输入外，开发者可以“免费”获得文本选择功能。必须实现一个完全自定义的文本选择功能，可能是很多对非纯文本工具开发的尝试半途而废的原因。（个人经历：我，WWDC，工程师们。我想要一个 iOS 的文本系统。回答：“嗯。吖。是的。也许？看，它只是不执行…” 所以毕竟还是有希望，对吧？）</p></li>
+</ul>
+
+
+<p>iOS 7：终于来了，TextKit。</p>
+
+<h2>功能</h2>
+
+<p>所以咱们到了。iOS7 带着 TextKit 登陆了。咱们看看它可以做什么！深入之前，我还想提一下，严格来说，这些事情中的大部分以前都可以做。如果你有大量的资源和时间来用 CoreText 构建一个文本引擎，这些都是可以做的。但是如果以前你想构建一个完善的富文本编辑器，你得花费几个月的时间。现在就非常简单，你只需要到在 Xcode 里打开一个界面文件，然后将 UITextView 拖到你的试图控制器，就可以获得所有的功能：</p>
+
+<ul>
+<li><p><strong>字距调整（Kerning）：</strong>所有的字符都有简单的二次的形状，这些形状必须被精确地放置，彼此相邻的，别这样想了。例如，现代文本布局会考虑到一个大写的“T”的“两翼”下面有一些空白，所以它会把后面的小写字母向左移让它们更靠近点。从而大大提高了文本的易读性，特别是在更长的文字中：
+<img src="/images/posts/2014-03-04-getting-to-know-textkit/kerning.png"></p></li>
+<li><p><strong>连写：</strong>我认为这主要是个艺术功能，但当某些字符组合（如“f”后面是“l”）使用组合符号（所谓的字形(glyph)）绘制时，有些文本确实看起来更好（更美观）。
+<img src="/images/posts/2014-03-04-getting-to-know-textkit/ligature.png"></p></li>
+<li><p><strong>图像附件：</strong>现在可以在文本视图里面添加图像了。</p></li>
+<li><p><strong>断字：</strong>编辑文本时没那么重要，但如果要以好看易读的方式展现文本时，这就相当重要。断字意味着在行边界处分割单词，从而为整体文本创建一个更整齐的排版和外观。个人经历：iOS7 之前，开发者必须直接使用 CoreText。像这样：首先以句子为基础检测文本语言，然后获取句子中每个单词可能的断字点，然后在每一个可能的断字点上插入定制的连字占位字符。准备好之后，运行 CoreText 的布局方法并手动将连字符插入到断行。如果你想得到好的效果，之后你得检查带有连字符的文本没有超出行边界，如果超出了，在运行一次行的布局方法，这一次不要使用上次使用的断字点。使用 TextKit 的话，就非常简单了，设置 hyphenationFactor 属性就可以启用断字。</p></li>
+<li><p><strong>可定制性：</strong>对我来说，甚至比改进过的排版还多，这是个新的功能。以前开发者必须在使用现有的功能和自己全部重头写之间做出选择。现在提供了一整套类，它们有代理协议，或者可以被覆盖从而改变部分行为。例如，不必重写整个文本组件，你现在就可以改变指定单词的断行行为。我认为这是个胜利。</p></li>
+<li><p><strong>更多的富文本属性：</strong>现在可以设置不同的下划线样式（双线、粗线、虚线、点线，或者它们的组合）。提高文本的基线非常容易，这可用来设置上标数字。开发者也不再需要自己为定制渲染的文本绘制背景颜色了（CoreText 不支持这些功能）。</p></li>
+<li><p><strong>序列化：</strong>过去没有内置的方法从磁盘读取带文本属性的字符串。或者再写回磁盘。现在有了。</p></li>
+<li><p><strong>文本样式：</strong>iOS7 的界面引入了一个全局预定义的文本类型的新概念。这些文本类型分配了一个全局预定义的外观。理想情况下，这可以让整个系统的标题和连续文本具有一致的风格。通过设置应用，用户可以定义他们的阅读习惯（例如文本大小），那些使用文本样式的应用将自动拥有正确的文本大小和外观。</p></li>
+<li><p><strong>文本效果：</strong>最后也是最不重要的。iOS7 有且仅有一个文本效果：凸版。使用此效果的文本看起来像是盖在纸上面一样。内阴影，等等。个人观点：真的？靠…？在一个已经完全彻底不可饶恕地枪毙了所有无用的怀旧装饰的操作系统上，谁会需要这个像文本盖在纸上的外观？</p></li>
+</ul>
+
+
+<h2>结构</h2>
+
+<p>可能概览一个系统最好的方法是画一幅图。这是UIKit文本系统——TextKit的简图：</p>
+
+<p><img src="/images/posts/2014-03-04-getting-to-know-textkit/TextKit.png"></p>
+
+<p>从上图可以看出来，要让一个文本引擎工作，需要几个参与者。我们将从外到里介绍它们：</p>
+
+<ul>
+<li><p><strong>字符串（String）：</strong>要绘制文本，那么必然在某个地方有个字符串存储它。在默认的结构中，NSTextStorage 保存并管理这个字符串，在这种情况中，它可以远离绘制。但并不一定非得这样。使用 TextKit 时，文本可以来自任何适合的来源。例如，对于一个代码编辑器，字符串可以是一棵包含所有显示的代码的结构信息的注释语法树（annotated syntax tree, AST）。使用一个定制的文本存储，这个文本只在后面动态地添加字体或颜色高亮等文本属性装饰。这是第一次，开发者可以直接为文本组件使用自己的模型。只需要一个特别设计的文本存储。即：</p></li>
+<li><p><strong>NSTextStorage：</strong>如果你把文本系统看做一个模型-视图-控制器（MVC）架构，这个类代表的是模型。文本存储是中心对象，它知道所有的文本和属性信息。它只提供了两个存取器方法存取它们，并提供了另外两个方法来修改它们。后面我们将进一步了解它们。现在重要的是你得理解 NSTextStorage 是从它的父类 NSAttributedString 继承了这些方法。这就很清楚了，文本存储——从文本系统看来——仅仅是一个带有属性的字符串，以及几个扩展。这两者唯一的重大不同点是文本存储包含了一个方法来发送内容改变的通知。我们会马上介绍这部分内容。</p></li>
+<li><p><strong>UITextView：</strong>堆栈的另一头是实际的视图。在 TextKit 中，文本视图有两个目的：第一，它是文本系统用来绘制的视图。文本视图它自己并不会做任何绘制；它仅仅提供一个供其它类绘制的区域。作为视图层级机构中唯一的组件，第二个目的是处理所有的用户交互。具体来说，文本视图实现 UITextInput 的协议来处理键盘事件，它为用户提供了一种途径来设置一个插入点或选择文本。它并不对文本做任何实际上的改变，仅仅将这些改变请求转发给刚刚讨论的文本存储。</p></li>
+<li><p><strong>NSTextContainer：</strong>每个文本视图定义了一个文本可以绘制的区域。为此，每个文本视图都有一个文本容器，它精确地描述了这个可用的区域。在简单的情况下，这是一个垂直的无限相当大的矩形区域。文本被填充到这个区域，并且文本视图允许用户滚动它。然而，在更高级的情况下，这个区域可能是一个无限大的矩形。例如，当渲染一本书时，每一页都有最大的高度和宽度。文本容器会定义这个大小，并且不接受任何超出的文本。相同情况下，一幅图像可能占据了页面的一部分，文本应该沿着它的边缘重新排版。这也是由文本容器来处理的，我们会在后面的例子中看到这一点。</p></li>
+<li><p><strong>NSLayoutManager：</strong>布局管理器是中心组件，它把所有组件粘合在一起：</p>
+
+<ol>
+<li> 这个管理器监听文本存储中文本或属性改变的通知，一旦接收到通知就触发布局进程。</li>
+<li> 从文本存储提供的文本开始，它将所有的字符翻译为字形（Glyph）（附注2）.</li>
+<li> 一旦字形全部生成，这个管理器向它的文本容器（们）查询文本可用以绘制的区域</li>
+<li> 然后这些区域被行逐步填充，而行又被字形逐步填充。一旦一行填充完毕，下一行开始填充。</li>
+<li> 对于每一行，布局管理器必须考虑断行行为（放不下的单词必须移到下一行）、连字符、内联的图像附件等等。</li>
+<li> 当布局完成，文本的当前显示状态被设为无效，然后文本管理器将前面几步排版好的文本设给文本视图。</li>
+</ol>
+</li>
+<li><p><strong>CoreText：</strong>没有直接包含在 TextKit 中，CoreText 是进行实际排版的库。对于布局管理器的每一步，CoreText 被这样或那样的方式调用。它提供了从字符到字形的翻译，用它们来填充行，以及建议断字点。</p></li>
+</ul>
+
+
+<h2>Cocoa 文本系统</h2>
+
+<p>创建像 TextKit 这样庞大复杂的系统肯定不是件简单快速的事情，而且肯定需要丰富的经验和知识。在 iOS 的前面6个主版本中，一直没有提供一个“真正的”文本组件，这也说明了这一点。Apple 把它视为一个大的新特性，当然没啥问题。但是它真的是全新的吗？</p>
+
+<p>这里有个数字：在 UIKit 的 131 个公共类中，只有 9 个的名字没有使用UI作为前缀。这 9 个类使用的是旧系统的的、旧世界的（跟我读：Mac OS）前缀 NS。而且这九个类里面，有七个是用来处理文本的。巧合？好吧…</p>
+
+<p>这是 Cocoa 文本系统的简图。不妨和上面 TextKit 的那幅图作一下对比。</p>
+
+<p><img src="/images/posts/2014-03-04-getting-to-know-textkit/CocoaTextSystem.png"></p>
+
+<p>惊人地相似。很明显，最起码主要部分，两者是相同的。很明显——除了右边部分以及 NSTextView 和 UITextView ——主要的类全部相同。TextKit 是（起码部分是）从 Cocoa 文本系统移植到 iOS。（我之前一直请求的那个，耶！）</p>
+
+<p>进一步比较还是能看出一些不同的。最值得注意的有：</p>
+
+<p>在 iOS 上没有 NSTypesetter 和 NSGlyphGenerator 这两个类。在 Mac OS 上有很多方法来定制排版，这被极大地简化了。这可以去掉一些抽象概念，并将这个过程合并到 NSLayoutManager 中来。保留下来的是少数的代理方法，以用来更改文本布局和断行行为。</p>
+
+<p>这些类的 iOS 实现提供了几个新的而且非常便利的功能。在 Cocoa 中，必须手工地将确定的区域从文本容器分离出来（见上）。而 UIKit 类提供了一个简单的 exclusionPaths 属性就可以做到这一点。</p>
+
+<p>有些功能未能提供，比如，内嵌表格，以及对非图像的附件的支持。</p>
+
+<p>尽管有这些区别，总的来说系统还是一样的。NSTextStorage 在两个系统是是一模一样的，NSLayoutManager 和 NSTextContainer 也没有太大的不同。这些变动，在没有太多去除对一些特例的支持的情况下，看来（某些情况下大大地）使文本系统的使用变得更为容易。我认为这是件好事。</p>
+
+<p>事后回顾我从 Apple 工程师那里得到的关于将 Cocoa 文本系统移植到 iOS 的答案，我们可以得到一些背景信息。拖到现在并削减功能的原因很简单：性能、性能、性能。文本布局可能是极度昂贵的任务——内存方面、电量方面以及时间方面——特别是在移动设备上。Apple 必须采用更简单的解决方案，并等到处理能力能够至少部分支持一个完善的文本布局引擎。</p>
+
+<h2>示例</h2>
+
+<p>为了说明 TextKit 的能力，我创建了一个小的演示项目，你可以在 <a href="https://github.com/objcio/issue-5-textkit">GitHub</a> 上找到它。在这个演示程序中，我只完成了一些以前不容易完成的功能。我必须承认编码工作只花了我礼拜天的一个上午的时间；如果以前要做同样的事情，我得花几天甚至几个星期。</p>
+
+<p>TextKit 包括了超过 100 个方法，一篇文章根本没办法尽数涉及。而事实上，大多数时候，你需要的仅仅是一个正确的方法，TextKit 的使用和定制性也仍有待探索。所以我决定做四个更小的演示程序，而非一个大的演示程序来展示所有功能。每个演示程序中，我试着演示针对不同的方面和不同的</p>
+
+<h2>演示程序1：配置</h2>
+
+<p>让我们从最简单的开始：配置文本系统。正如你在上面 TextKit 简图中看到的，NSTextStorage、NSLayoutManager 和 NSTextContainer 之间的箭头都是有两个头的。我试图描述它们的关系是 1 对 N 的关系。就是那样：一个文本存储可以拥有多个布局管理器，一个布局管理器也可以拥有多个文本容器。这些多重性带来了很好的特性：</p>
+
+<ul>
+<li><p>将多个文本管理器附加到一个文本存储上，可以产生相同文本的多种视觉表现，而且它们可以并排显示。每一个表现可以独立地布置和修改大小。如果相应的文本视图可编辑，那么在某个视图上做的所有修改都会马上反映到所有视图上。</p></li>
+<li><p>将多个文本容器附加到一个文本管理器上，可以将一个文本分布到多个视图展现出来。例如很有用的基于页面的布局：每个页面包含一个单独的视图。一个文本管理器利用这些视图的文本容器，将文本分布到这些视图上。</p></li>
+</ul>
+
+
+<p>在 storyboard 或者 interface 文件中实例化 UITextView 时，它会预配置一个文本系统：一个文本存储，引用一个文本管理器，而后者又引用一个文本容器。同样地，一个文本系统栈也可以通过代码直接创建：</p>
+
+<pre><code class="objc">NSTextStorage *textStorage = [NSTextStorage new];
+
+NSLayoutManager *layoutManager = [NSLayoutManager new];
+[textStorage addLayoutManager: layoutManager];
+
+NSTextContainer *textContainer = [NSTextContainer new];
+[layoutManager addTextContainer: textContainer];
+
+UITextView *textView = [[UITextView alloc] initWithFrame:someFrame 
+                                           textContainer:textContainer];
+</code></pre>
+
+<p>这是最简单的方式。手工创建一个文本系统，唯一需要记住的事情是你的视图控制器必须 retain 文本存储。在栈底的文本视图只保留了对文本存储和布局管理器的弱引用。当文本存储被释放时，布局管理器也被释放了，这样留给文本视图的就只有一个断开的容器了。</p>
+
+<p>这个规则有一个例外。只有从一个 interface 文件或 storyboard 实例化一个文本视图时，文本视图确实会 retain 文本存储。框架使用了一些黑魔法以确保所有的对象都被 retain，而无需建立一个 retain 环。</p>
+
+<p>记住这些之后，创建一个更高级的设置也非常简单。假设在一个视图里面依旧有一个从 nib 实例化的文本视图，叫做 originalTextView。增加对相同文本的第二个文本视图只需要复制上面的代码，并重用 originalTextView 的文本存储：</p>
+
+<pre><code class="objc">NSTextStorage *sharedTextStorage = originalTextView.textStorage;
+
+NSLayoutManager *otherLayoutManager = [NSLayoutManager new];
+[sharedTextStorage addLayoutManager: otherLayoutManager];
+
+NSTextContainer *otherTextContainer = [NSTextContainer new];
+[otherLayoutManager addTextContainer: otherTextContainer];
+
+UITextView *otherTextView = [[UITextView alloc] initWithFrame:someFrame 
+                                                textContainer:otherTextContainer];
+</code></pre>
+
+<p>将第二个文本容器附加到布局管理器也差不多。比方说我们希望上面例子中的文本填充两个文本视图，而非一个。简单：</p>
+
+<pre><code class="objc">NSTextContainer *thirdTextContainer = [NSTextContainer new];
+[otherLayoutManager addTextContainer: thirdTextContainer];
+
+UITextView *thirdTextView = [[UITextView alloc] initWithFrame:someFrame 
+                                                textContainer:thirdTextContainer];
+</code></pre>
+
+<p>但有一点需要注意：由于在 otherTextView 中的文本容器可以无限地调整大小，thirdTextView 永远不会得到任何文本。因此，我们必须指定文本应该从一个视图回流到其它视图，而不应该调整大小或者滚动：</p>
+
+<pre><code class="objc">otherTextView.scrollEnabled = NO;
+</code></pre>
+
+<p>不幸的是，看来将多个文本容器附加到一个文本管理器会禁用编辑功能。如果必须保留编辑功能的话，你只可以将一个文本容器附加到一个文本管理器上。</p>
+
+<p>想要一个这个配置的可运行的例子的话，请在前面提到的 <a href="https://github.com/objcio/issue-5-textkit">TextKitDemo</a> 中查看“Configuration”标签页。</p>
+
+<h2>演示程序2：语法高亮</h2>
+
+<p>如果配置文本视图不是那么令人激动，那么这里有更有趣的：语法高亮！</p>
+
+<p>看看 TextKit 组件的责任划分，就很清楚语法高亮应该在文本存储上实现。因为 NSTextStorage 是一个类簇（附注3），创建它的子类需要做不少工作。我的想法是建立一个复合对象：实现所有的方法，但只是将对它们的调用转发给一个实际的实例，将输入输出参数或者结果修改为希望的样子。</p>
+
+<p>NSTextStorage 继承自 NSMutableAttributedString，并且必须实现以下四个方法——两个 getter 和两个 setter：</p>
+
+<pre><code class="objc">- (NSString *)string;
+- (NSDictionary *)attributesAtIndex:(NSUInteger)location 
+                     effectiveRange:(NSRangePointer)range;
+- (void)replaceCharactersInRange:(NSRange)range withString:(NSString *)str;
+- (void)setAttributes:(NSDictionary *)attrs range:(NSRange)range;
+</code></pre>
+
+<p>一个类簇的子类的复合对象的实现也相当简单。首先，找到一个满足所有要求的最简单的类。在我们的例子中，它是 NSMutableAttributedString，我们用它作为实现自定义存储的实现：</p>
+
+<pre><code class="objc">@implementation TKDHighlightingTextStorage 
+{
+    NSMutableAttributedString *_imp;
+}
+
+- (id)init
+{
+    self = [super init];
+    if (self) {
+        _imp = [NSMutableAttributedString new];
+    }
+    return self;
+}
+</code></pre>
+
+<p>有了这个对象，只需要一行代码就可以实现两个 getter 方法：</p>
+
+<pre><code class="objc">- (NSString *)string 
+{
+    return _imp.string;
+}
+
+- (NSDictionary *)attributesAtIndex:(NSUInteger)location effectiveRange:(NSRangePointer)range 
+{
+    return [_imp attributesAtIndex:location effectiveRange:range];
+}
+</code></pre>
+
+<p>实现两个 setter 方法也几乎同样简单。但也有一个小麻烦：文本存储需要通知它的文本管理器变化发生了。因此 settter 方法必须也要调用 -edited:range:changeInLegth: 并传给它变化的描述。听起来更糟糕，实现变成：</p>
+
+<pre><code class="objc">- (void)replaceCharactersInRange:(NSRange)range withString:(NSString *)str 
+{
+    [_imp replaceCharactersInRange:range withString:str];
+    [self edited:NSTextStorageEditedCharacters range:range 
+                                      changeInLength:(NSInteger)str.length - (NSInteger)range.length];
+}
+
+- (void)setAttributes:(NSDictionary *)attrs range:(NSRange)range 
+{
+    [_imp setAttributes:attrs range:range];
+    [self edited:NSTextStorageEditedAttributes range:range changeInLength:0];
+}
+</code></pre>
+
+<p>就这样，我们在文本系统栈里面有了一个文本存储的全功能替换版本。在从 interface 文件中载入时，可以像这样将它插入文本视图——但是记住从一个实例变量引用文本存储：</p>
+
+<pre><code class="objc">_textStorage = [TKDHighlightingTextStorage new];
+[_textStorage addLayoutManager: self.textView.layoutManager];
+</code></pre>
+
+<p>到目前为止，一切都很好。我们设法插入了一个自定义的文本存储，接下来我们需要真正高亮文本的某些部分了。现在，一个简单的高亮应该就是够了：我们希望将所有 iWords 的颜色变成红色——也就是那些以小写“i”开头，后面跟着一个大写字母的单词。</p>
+
+<p>一个方便实现高亮的办法是覆盖 -processEditing。每次文本存储有修改时，这个方法都自动被调用。每次编辑后，NSTextStorage 会用这个方法来清理字符串。例如，有些字符无法用选定的字体显示时，文本存储使用一个可以显示它们的字体来进行替换。</p>
+
+<p>和其它一样，为 iWords 增加一个简单的高亮也相当简单。我们覆盖 -processEditing，调用父类的实现，并设置一个正则表达式来查找单词：</p>
+
+<pre><code class="objc">- (void)processEditing 
+{
+    [super processEditing];
+
+    static NSRegularExpression *iExpression;
+    NSString *pattern = @"i[\\p{Alphabetic}&amp;&amp;\\p{Uppercase}][\\p{Alphabetic}]+";
+    iExpression = iExpression ?: [NSRegularExpression regularExpressionWithPattern:pattern 
+                                                                           options:0 
+                                                                             error:NULL];
+</code></pre>
+
+<p>然后，首先清除之前的所有高亮：</p>
+
+<pre><code class="objc">NSRange paragaphRange = [self.string paragraphRangeForRange: self.editedRange];
+[self removeAttribute:NSForegroundColorAttributeName range:paragaphRange];
+</code></pre>
+
+<p>其次遍历所有的样式匹配项并高亮它们：</p>
+
+<pre><code class="objc">[iExpression enumerateMatchesInString:self.string 
+                                  options:0 range:paragaphRange 
+                               usingBlock:^(NSTextCheckingResult *result, NSMatchingFlags flags, BOOL *stop) 
+    {
+        [self addAttribute:NSForegroundColorAttributeName value:[UIColor redColor] range:result.range];
+    }];
+}
+</code></pre>
+
+<p>就是这样。我们创建了一个支持语法高亮的动态文本视图。当用户键入时，高亮将被实时应用。而且这只需几行代码。酷吧？</p>
+
+<p><img src="/images/posts/2014-03-04-getting-to-know-textkit/SyntaxHighlighting.png"></p>
+
+<p>请注意仅仅使用 edited range 是不够的。例如，当手动键入 iWords，只有一个单词的第三个字符被键入后，正则表达式才开始匹配。但那时 editedRange 仅包含第三个字符，因此所有的处理只会检查这个字符。通过重新处理整个段落，我们可以完成高亮功能，又不会太过影响性能。</p>
+
+<p>想要一个这个配置的可运行的例子的话，请在前面提到的 <a href="https://github.com/objcio/issue-5-textkit">TextKitDemo</a> 中查看“Highlighting”标签页。</p>
+
+<h2>演示程序3：布局修改</h2>
+
+<p>如前所述，布局管理器是核心的布局主力。Mac OS 上 NSTypesetter 的高度可定制功能被并入 iOS 上的 NSLayoutManager。虽然 TextKit 不具备像 Cocoa 文本系统那样的完全可定制性，但它提供很多代理方法来允许做一些调整。如前所述，TextKit 与 CoreText 更紧密地集成在一起，主要是基于性能方面的考虑。但是两个文本系统的理念在一定程度上是不一样的：</p>
+
+<ul>
+<li><p><strong>Cocoa 文本系统：</strong>在 Mac OS上，性能不是问题，设计考量的全部是灵活性。可能是这样：“这个东西可以做这个事情。如果你想的话，你可以覆盖它。性能不是问题。你也可以提供完全由自己实现的字符到字形的转换，去做吧…”</p></li>
+<li><p><strong>TextKit：</strong>性能看来真是个问题。理念（起码现在）更多的是像这样：“我们用简单但是高性能的方法实现了这个功能。这是结果，但是我们给你一个机会去更改它的一些东西。但是你只能在不太损害性能的地方进行修改。”</p></li>
+</ul>
+
+
+<p>足够的理念，让我们来定制些东西。例如，调整行高如何？听起来不可思议，但是在之前的 iOS 发布版上调整行高至少是很黑客的行为，或者需要使用私有 API。幸运的是，现在（再一次）不用那么搞脑子了。设置布局管理器的代理并实现仅仅一个方法即可：</p>
+
+<pre><code class="objc">- (CGFloat)      layoutManager:(NSLayoutManager *)layoutManager 
+  lineSpacingAfterGlyphAtIndex:(NSUInteger)glyphIndex 
+  withProposedLineFragmentRect:(CGRect)rect 
+{
+    return floorf(glyphIndex / 100);
+}
+</code></pre>
+
+<p>在以上的代码中，我修改了行间距，让它与文本长度同时增长。这导致顶部的行比底部的行排列得更紧密。我承认这没什么实际的用处，但是它是可以做到的（而且肯定会有更实用的用例的）。</p>
+
+<p>好，来一个更现实的场景。假设你的文本中有链接，你不希望这些链接被行包围。如果可能的话，一个 URL 应该始终显示为一个整体，一个单一的文本片段。没有什么比这更简单的了。</p>
+
+<p>首先，我们通过使用自定义的文本存储，就像前面讨论过的那个。但是，它寻找链接并将其标记，而不是检测 iWords，如下：</p>
+
+<pre><code class="objc">static NSDataDetector *linkDetector;
+linkDetector = linkDetector ?: [[NSDataDetector alloc] initWithTypes:NSTextCheckingTypeLink error:NULL];
+
+NSRange paragaphRange = [self.string paragraphRangeForRange: NSMakeRange(range.location, str.length)];
+[self removeAttribute:NSLinkAttributeName range:paragaphRange];
+
+[linkDetector enumerateMatchesInString:self.string 
+                               options:0 
+                                 range:paragaphRange 
+                            usingBlock:^(NSTextCheckingResult *result, NSMatchingFlags flags, BOOL *stop) 
+{
+    [self addAttribute:NSLinkAttributeName value:result.URL range:result.range];
+}];
+</code></pre>
+
+<p>有了这个，改变断行行为就只需要实现一个布局管理器的代理方法：</p>
+
+<pre><code class="objc">- (BOOL)layoutManager:(NSLayoutManager *)layoutManager shouldBreakLineByWordBeforeCharacterAtIndex:(NSUInteger)charIndex 
+{
+    NSRange range;
+    NSURL *linkURL = [layoutManager.textStorage attribute:NSLinkAttributeName 
+                                                  atIndex:charIndex 
+                                           effectiveRange:&amp;range];
+
+    return !(linkURL &amp;&amp; charIndex &gt; range.location &amp;&amp; charIndex &lt;= NSMaxRange(range));
+}
+</code></pre>
+
+<p>想要一个可运行的例子的话，请在前面提到的 <a href="https://github.com/objcio/issue-5-textkit">TextKitDemo</a> 中查看“Layout”标签页。以下是截屏：</p>
+
+<p><img src="/images/posts/2014-03-04-getting-to-know-textkit/LineBreaking.png"></p>
+
+<p>顺便说一句，上面截屏里面的绿色轮廓线是无法用 TextKit 实现的。在这个演示程序中，我用了个小技巧来在布局管理器的子类中给文本画轮廓线。也可以很容易以特定的方法来扩展 TextKit 的绘制功能。一定要看看！</p>
+
+<h2>演示程序4：文本交互</h2>
+
+<p>前面已经涉及到了 NSTextStorage 和 NSLayoutManager，最后一个演示程序将涉及 NSTextContainer。这个类并不复杂，而且它除了指定文本可不可以放置在某个地方外，什么都没做。</p>
+
+<p>不要将文本放置在某些区域，这是很常见的需求，例如，在杂志应用中。对于这种情况，iOS 上的 NSTextContainer 提供了一个 Mac 开发者梦寐以求的属性：exclusionPaths，它允许开发者设置一个 NSBezierPath 数组来指定不可填充文本的区域。要了解这到底是什么东西，看一眼下面的截屏：</p>
+
+<p><img src="/images/posts/2014-03-04-getting-to-know-textkit/ReflowingTextAndClippy.png"></p>
+
+<p>正如你所看到的，所有的文本都放置在蓝色椭圆外面。在文本视图里面实现这个行为很简单，但是有个小麻烦：贝塞尔路径的坐标必须使用容器的坐标系。以下是转换方法：</p>
+
+<pre><code class="objc">- (void)updateExclusionPaths 
+{
+    CGRect ovalFrame = [self.textView convertRect:self.circleView.bounds 
+                                         fromView:self.circleView];
+
+    ovalFrame.origin.x -= self.textView.textContainerInset.left;
+    ovalFrame.origin.y -= self.textView.textContainerInset.top;
+
+    UIBezierPath *ovalPath = [UIBezierPath bezierPathWithOvalInRect:ovalFrame];
+    self.textView.textContainer.exclusionPaths = @[ovalPath];
+}
+</code></pre>
+
+<p>在这个例子中，我使用了一个用户可移动的视图，它可以被自由移动，而文本会实时地围绕着它重新排版。我们首先将它的bounds（self.circleView.bounds）转换到文本视图的坐标系统。</p>
+
+<p>因为没有 inset，文本会过于靠近视图边界，所以 UITextView 会在离边界还有几个点的距离的地方插入它的文本容器。因此，要得到以容器坐标表示的路径，必须从 origin 中减去这个插入点的坐标。</p>
+
+<p>在此之后，只需将贝塞尔路径设置给文本容器即可将对应的区域排除掉。其它的过程对你来说是透明的，TextKit 会自动处理。</p>
+
+<p>想要一个可运行的例子的话，请在前面提到的 <a href="https://github.com/objcio/issue-5-textkit">TextKitDemo</a> 中查看“Interaction”标签页。作为一个小噱头，它也包含了一个跟随当前文本选择的视图。应为，你也知道，没有一个小小的丑陋的烦人的回形针挡住你的话，那还是一个好的文本编辑器演示程序吗？</p>
+
+<p>附注:</p>
+
+<ol>
+<li><p>Pages 确实——据 Apple 声称——绝对没有使用私有 API。<em>咳</em> 我的理论：它要么使用了一个 TextKit 的史前版本，要么复制了 UIKit 一半的私有源程序。或者两者的混合。</p></li>
+<li><p>字形：如果说字符是一个字母的“语义”表达，字形则是它的可视化表达。取决于所使用的字体，字形要么是贝塞尔路径，或者位图图像，它定义了要绘制出来的形状。也请参考卓越的 Wikipedia 上关于字形的<strong><a href="http://en.wikipedia.org/wiki/Glyph">这篇文章</a></strong>。</p></li>
+<li><p>在一个类簇中，只有一个抽象的父类是公共的。分配一个实例实际上就是创建其中一个私有类的对象。因此，你总是为一个抽象类创建子类，并且需要实现所有的方法。也请参考<strong><a href="https://developer.apple.com/library/ios/documentation/general/conceptual/CocoaEncyclopedia/ClassClusters/ClassClusters.html">class cluster documentation</a></strong>。</p></li>
+</ol>
+
+
+<p>原文链接：<a href="http://www.objc.io/issue-5/getting-to-know-textkit.html">Max Seelemann</a></p>
+
+<p>翻译：<a href="http://blog.jobbole.com/">伯乐在线</a> - <a href="http://blog.jobbole.com/author/oldtown/">和谐老约翰</a></p>
+
+<p>译文链接：<a href="http://blog.jobbole.com/51965/">http://blog.jobbole.com/51965/</a></p>
+]]></content>
+  </entry>
+  
+</feed>

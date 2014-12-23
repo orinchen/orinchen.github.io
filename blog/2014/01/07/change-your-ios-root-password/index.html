@@ -1,0 +1,283 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>使用 MobileTerminal 修改 iOS 设备 Root 权限密码 - O&#8217;s World</title>
+  <meta name="author" content="Orin Chen">
+
+  
+  <meta name="description" content="为什么要修改 root 密码 iOS 设备越狱后，就拥有了完全的权限，你可以任意安装任意的软件，但是也存在一定的风险，因为默认的root密码是一样的&ndash;alpine，这种弱口令是很不安全的。而且如果不修改，别人也会拥有管理你的系统的权限，这样当你的设备在网络中时就造成你的设备很容易被入侵 &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://orinchen.github.io/blog/2014/01/07/change-your-ios-root-password">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="O's World" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="/javascripts/libs/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href='http://fonts.googleapis.com/css?family=Delius' rel='stylesheet' type='text/css'>
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">O&#8217;s World</a></h1>
+  
+    <h2>努力！奋斗！</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="sitesearch" value="orinchen.github.io">
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">使用 MobileTerminal 修改 iOS 设备 Root 权限密码</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2014-01-07T12:59:32+08:00'><span class='date'><span class='date-month'>Jan</span> <span class='date-day'>7</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>12:59 pm</span></time>
+        
+           | <a href="#disqus_thread"
+             data-disqus-identifier="http://orinchen.github.io">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h2>为什么要修改 root 密码</h2>
+
+<p>iOS 设备越狱后，就拥有了完全的权限，你可以任意安装任意的软件，但是也存在一定的风险，因为默认的root密码是一样的&ndash;alpine，这种弱口令是很不安全的。而且如果不修改，别人也会拥有管理你的系统的权限，这样当你的设备在网络中时就造成你的设备很容易被入侵，或者在不安全陌生的环境中会感染病毒（例如3G环境），所以，为了以后安全，建议最好修改。</p>
+
+<!--more-->
+
+
+<h2>什么是 MobileTerminal</h2>
+
+<p>MobileTerminal 是一款在iPhone、iPad等iOS设备中的终端管理软件，采用类似于命令行的非图形界接口理您的 iOS 设备的进程，以及运行一些专门为命令行下工作的软件，类似于 Mac 下的 Terminal。</p>
+
+<h2>安装 MobileTerminal 并修改 root 密码</h2>
+
+<p>要安装 MobileTerminal 首先需要将设备越狱。越狱完成之后,就可以在 Cydia 中直接查找和安装 MobileTerminal。安装完成之后就可以通过下面的步骤来修改你的 root 密码。</p>
+
+<ol>
+<li>运行 MobileTerminal。</li>
+<li>输入 <code>su root</code> 提升到管理员权限</li>
+<li>输入 <code>passwd</code> 然后根据提示输入新密码</li>
+<li>完成！</li>
+</ol>
+
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Orin Chen</span></span>
+
+      
+
+
+
+
+<time class='entry-date' datetime='2014-01-07T12:59:32+08:00'><span class='date'><span class='date-month'>Jan</span> <span class='date-day'>7</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>12:59 pm</span></time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/hack/'>hack</a>, <a class='category' href='/blog/categories/ios/'>ios</a>, <a class='category' href='/blog/categories/mobileterminal/'>mobileterminal</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+
+  
+  <!-- JiaThis Button BEGIN -->
+  <div class="jiathis_style">
+    <span class="jiathis_txt">分享到：</span>
+    <a class="jiathis_button_tsina">新浪微博</a>
+    <a class="jiathis_button_googleplus">Google+</a>
+    <a class="jiathis_button_renren">人人网</a>
+    <a class="jiathis_button_qzone">QQ空间</a>
+    <a class="jiathis_button_tqq">腾讯微博</a>
+    <a href="http://www.jiathis.com/share" class="jiathis jiathis_txt jiathis_separator jtico jtico_jiathis" target="_blank">更多</a>
+    <a class="jiathis_counter_style"></a>
+  </div>
+  <script type="text/javascript" src="http://v2.jiathis.com/code/jia.js?uid=1334720487296344" charset="utf-8"></script>
+  <p/>
+  <!-- JiaThis Button END -->
+
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2013/12/30/let-octopress-support-latex/" title="Previous Post: 让 octopress 支持 LaTeX">&laquo; 让 octopress 支持 LaTeX</a>
+      
+      
+        <a class="basic-alignment right" href="/blog/2014/01/15/install-and-use-openssh-on-ios/" title="Next Post: 在 iOS 设备上安装和使用 OpenSSH">在 iOS 设备上安装和使用 OpenSSH &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+  <section>
+    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+  </section>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/05/06/create-aliase-of-sublime-text-in-zsh/">在 ZSH 中调用 Sublime Text</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/11/ios7-interactive-transitions/">iOS 7 交互式过渡</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/26/a-look-inside-blocks/">谈Objective-C Block的实现</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/20/objective-c-object-model/">Objective-C对象模型及应用</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/15/use-gcd/">使用 GCD</a>
+      </li>
+    
+  </ul>
+</section>
+
+<section>
+  <h1>GitHub Repos</h1>
+  <ul id="gh_repos">
+    <li class="loading">Status updating&#8230;</li>
+  </ul>
+  
+  <a href="https://github.com/orinchen">@orinchen</a> on GitHub
+  
+  <script type="text/javascript">
+    $(document).ready(function(){
+        if (!window.jXHR){
+            var jxhr = document.createElement('script');
+            jxhr.type = 'text/javascript';
+            jxhr.src = '/javascripts/libs/jXHR.js';
+            var s = document.getElementsByTagName('script')[0];
+            s.parentNode.insertBefore(jxhr, s);
+        }
+
+        github.showRepos({
+            user: 'orinchen',
+            count: 0,
+            skip_forks: true,
+            target: '#gh_repos'
+        });
+    });
+  </script>
+  <script src="/javascripts/github.js" type="text/javascript"> </script>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 - Orin Chen -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'orin-world';
+      
+        
+        // var disqus_developer = 1;
+        var disqus_identifier = 'http://orinchen.github.io/blog/2014/01/07/change-your-ios-root-password/';
+        var disqus_url = 'http://orinchen.github.io/blog/2014/01/07/change-your-ios-root-password/';
+        var disqus_script = 'embed.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = '//' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>

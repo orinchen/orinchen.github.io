@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: Octopress | O's World]]></title>
+  <link href="http://orinchen.github.io/blog/categories/octopress/atom.xml" rel="self"/>
+  <link href="http://orinchen.github.io/"/>
+  <updated>2014-12-23T14:39:05+08:00</updated>
+  <id>http://orinchen.github.io/</id>
+  <author>
+    <name><![CDATA[Orin Chen]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[让 Octopress 支持 LaTeX]]></title>
+    <link href="http://orinchen.github.io/blog/2013/12/30/let-octopress-support-latex/"/>
+    <updated>2013-12-30T09:13:35+08:00</updated>
+    <id>http://orinchen.github.io/blog/2013/12/30/let-octopress-support-latex</id>
+    <content type="html"><![CDATA[<h2>安装并使用kramdown解析器</h2>
+
+<p><a href="http://kramdown.gettalong.org/index.html">kramdown</a> 是一个用Ruby实现的Markdown的解析器, 要让octopress 支持 <em>LaTeX</em> 首先要安装 kramdown。</p>
+
+<pre><code class="bash">gem install kramdown
+</code></pre>
+
+<p>安装完成后修改 octopress 的 _config.yml 文件。</p>
+
+<p>修改</p>
+
+<pre><code class="yml">markdown: rdiscount
+</code></pre>
+
+<p>为</p>
+
+<pre><code class="yml">markdown: kramdown
+</code></pre>
+
+<!--more-->
+
+
+<h2>添加 Mathjax 库</h2>
+
+<p><a href="http://www.mathjax.org/">MathJax</a>是一个JavaScript引擎，用来显示网络上的数学公式。仅仅安装了kramdown并不能让博文正确显示各种数学公式，还必须添加MathJax库。</p>
+
+<p>将下面的代码添加到:source/_includes/custom/head.html：</p>
+
+<p>&#8220;` html</p>
+
+<!-- mathjax config similar to math.stackexchange -->
+
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  jax: ["input/TeX", "output/HTML-CSS"],
+  tex2jax: {
+    inlineMath: [ ['$', '$'] ],
+    displayMath: [ ['$$', '$$']],
+    processEscapes: true,
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+  messageStyle: "none",
+  "HTML-CSS": { preferredFont: "TeX", availableFonts: ["STIX","TeX"] }
+});
+</script>
+
+
+<script src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML" type="text/javascript"></script>
+
+
+<pre><code>
+修改sass/base/_theme.scss，以解决一个右键点击公式页面瞬间白化的小bug。
+
+将
+</code></pre>
+
+<p>body {</p>
+
+<blockquote><p>div {
+    background: $sidebar-bg $noise-bg;
+    border-bottom: 1px solid $page-border-bottom;
+    > div {
+      background: $main-bg $noise-bg;
+      border-right: 1px solid $sidebar-border;
+    }
+  }
+}
+&#8220;`</p></blockquote>
+
+<p>修改为</p>
+
+<pre><code class="css">body {
+  &gt; div#main {
+    background: $sidebar-bg $noise-bg;
+    border-bottom: 1px solid $page-border-bottom;
+    &gt; div {
+      background: $main-bg $noise-bg;
+      border-right: 1px solid $sidebar-border;
+    }
+  }
+}
+</code></pre>
+
+<p>OK~现在可以在博文中使用LaTeX写复杂的数学表达式了。</p>
+
+<pre><code class="latex">\begin{align}
+    E &amp;= mc^2
+\end{align}
+</code></pre>
+
+<p>\begin{align}
+    E &amp;= mc<sup>2</sup>
+\end{align}</p>
+
+<pre><code class="latex">\begin{align}
+    m &amp;= \frac{m_0}{\sqrt{1-\frac{v^2}{c^2}}}
+\end{align}
+</code></pre>
+
+<p>\begin{align}
+    m &amp;= \frac{m_0}{\sqrt{1-\frac{v<sup>2</sup>}{c<sup>2</sup>}}}
+\end{align}</p>
+]]></content>
+  </entry>
+  
+</feed>

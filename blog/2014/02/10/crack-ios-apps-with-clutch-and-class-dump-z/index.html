@@ -1,0 +1,537 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>使用 Class-dump-z 和 Clutch 分析 iOS App - O&#8217;s World</title>
+  <meta name="author" content="Orin Chen">
+
+  
+  <meta name="description" content="什么是 class-dump-z class dump 是一个命令行工具，用来监测存储在 Mach-O 二进制文件理的 Objective-C 运行时信息。它为类（class），分类（category）和协议（protocol）生成声明信息。这些信息与 otool -ov 命令提供的信息是一样的， &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://orinchen.github.io/blog/2014/02/10/crack-ios-apps-with-clutch-and-class-dump-z">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="O's World" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="/javascripts/libs/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href='http://fonts.googleapis.com/css?family=Delius' rel='stylesheet' type='text/css'>
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">O&#8217;s World</a></h1>
+  
+    <h2>努力！奋斗！</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="sitesearch" value="orinchen.github.io">
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">使用 Class-dump-z 和 Clutch 分析 iOS App</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2014-02-10T09:26:19+08:00'><span class='date'><span class='date-month'>Feb</span> <span class='date-day'>10</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>9:26 am</span></time>
+        
+           | <a href="#disqus_thread"
+             data-disqus-identifier="http://orinchen.github.io">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h2>什么是 class-dump-z</h2>
+
+<p>class dump 是一个命令行工具，用来监测存储在 Mach-O 二进制文件理的 Objective-C 运行时信息。它为类（class），分类（category）和协议（protocol）生成声明信息。这些信息与 otool -ov 命令提供的信息是一样的，但表示得更像正常的 Objective-C 的声明，所以它更紧凑，更易读。</p>
+
+<p>class dump 有三个版本：class-dump, class-dump-x 和 class-dump-z。class-dump-z 是对 class-dump 和 class-dump-x 改进版，完全用C++重写，避免动态调用，使得 class-dump-z 比它的前任们快10倍左右。并且可以在 Linux，Mac, iPhone 上运行。</p>
+
+<!--more-->
+
+
+<h2>安装 class-dump-z</h2>
+
+<p>class-dump-z 的安装十分简单。只要到<a href="https://code.google.com/p/networkpx/wiki/class_dump_z"><em>这里</em></a>下载最新的版本并解压，然后将 <code>mac_x86/class-dump-z</code> 拷贝到 <code>/usr/bin/</code> 目录中即可。</p>
+
+<h2>尝试导出 App 代码信息</h2>
+
+<p>class-dump-z 安装完成之后就可以开始 App Crack 工作。</p>
+
+<p>首先使用iExploer(或iFunbox)打开真机的应用程序目录，打开 目标程序 xxxx.app 子目录，按照文件大小排序，找到一个与父目录同名的程序文件xxxx，这个就是编译后的主程序了，将它导出到 Mac 中。</p>
+
+<p>然后在终端中输入命令：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'>class-dump-z xxxx
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>然后会看到如下的提示信息和输出：</p>
+
+<p><em>Warning: Part of this binary is encrypted. Usually, the result will be not meaningful. Try to provide an unencrypted version instead.</em></p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="cm">/**</span>
+</span><span class='line'><span class="cm"> * This header is generated by class-dump-z 0.2a.</span>
+</span><span class='line'><span class="cm"> * class-dump-z is Copyright (C) 2009 by KennyTM~, licensed under GPLv3.</span>
+</span><span class='line'><span class="cm"> *</span>
+</span><span class='line'><span class="cm"> * Source: (null)</span>
+</span><span class='line'><span class="cm"> */</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">@protocol</span> <span class="nc">XXEncryptedProtocol_7c2bc</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_63de7</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64b92</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64b86</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64b7e</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64b77</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64311</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64b63</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64b52</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64b43</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64b3b</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64b14</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64af8</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64ae7</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64ae2</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64add</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_63e09</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64ad2</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64acd</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="o">?</span><span class="p">)</span><span class="nf">XXEncryptedMethod_64ac4</span><span class="p">;</span>
+</span><span class='line'><span class="k">@optional</span>
+</span><span class='line'><span class="o">-</span><span class="p">(</span><span class="o">?</span><span class="p">)</span><span class="n">XXEncryptedMethod_64b9e</span><span class="p">;</span>
+</span><span class='line'><span class="k">@end</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>这明显不是我们想要的结果！原因是苹果会对所有发布到 App Store 上的 App 进行加密，简单的 class-dump-z 无法导出其代码信息！现在我们需要另外一个工具将目标 App 解密，这个工具就是 Clutch。</p>
+
+<h2>什么是 Clutch</h2>
+
+<p><a href="https://github.com/KJCracks/Clutch"><em>Clutch</em></a>是一个 iOS 工具，专门用来将手机中的 App 进行解密。安装 Clutch 首先要将设备越狱，而且由于 Clutch 是一个命令行工具，要想使用它还必在设备中须安装 MobileTerminal 或 OpenSSH。</p>
+
+<h2>安装和配置 Clutch</h2>
+
+<p>首先到<a href="https://github.com/KJCracks/Clutch/releases"><em>这里</em></a>下载 Clutch 的最新版本并将其拷贝到设备的 /usr/bin 目录中：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'>scp scp Clutch-1.4.2 root@192.168.xxx.xxx:/usr/bin <span class="c">#拷贝文件</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>然后使用 ssh 连接到设备，重命名文件并设置权限：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'>ssh root@192.168.100.158 <span class="c">#使用SSH连接设备</span>
+</span><span class='line'><span class="nb">cd</span> /usr/bin
+</span><span class='line'>mv Clutch-1.4.2 clutch <span class="c">#将 Clutch-1.4.2 重命名为 Clutch</span>
+</span><span class='line'>chmod 0x777 clutch <span class="c">#修改 clutch 的权限</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>接着在 ssh 连接中使用 <code>Clucth -C</code> 命令，根据提示设置好 clutch 即可。</p>
+
+<h2>使用 Clucth 解密 App</h2>
+
+<p>经过上面的安装和设置 Clucth 已经可以正常使用了。在 ssh 连接中使用 <code>Clutch</code> 命令后会看到一个如下的 App 列表：</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'>Clutch 1.4.2
+</span><span class='line'>---------------------------------
+</span><span class='line'>
+</span><span class='line'>1<span class="o">)</span> AiCai
+</span><span class='line'>2<span class="o">)</span> App
+</span><span class='line'>3<span class="o">)</span> Articles
+</span><span class='line'>4<span class="o">)</span> calendar
+</span><span class='line'>5<span class="o">)</span> CalendarsLite
+</span><span class='line'>6<span class="o">)</span> CarrotFantasy
+</span><span class='line'>7<span class="o">)</span> ConverterInfinity
+</span><span class='line'>8<span class="o">)</span> converti
+</span><span class='line'>9<span class="o">)</span> Convertible
+</span><span class='line'>10<span class="o">)</span> CYLS
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>在列表中找到需要解密的 App，记住前面的编号比如是 9，然后执行命令 <code>Clutch 9</code>稍等片刻就可完成对目标 App 的解密。</p>
+
+<h2>再次尝试导出 App 代码信息</h2>
+
+<p>提示完成之后，会看见解密后的 ipa 文件路径，将其拷贝到 Mac 中，修改后缀名为 zip 并解压。找到其中的主程序文件，再次使用命令 <code>class-dump-z xxxx</code>，就可以看到目标程序的头文件信息啦。</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+<span class='line-number'>29</span>
+<span class='line-number'>30</span>
+<span class='line-number'>31</span>
+<span class='line-number'>32</span>
+<span class='line-number'>33</span>
+<span class='line-number'>34</span>
+<span class='line-number'>35</span>
+<span class='line-number'>36</span>
+<span class='line-number'>37</span>
+<span class='line-number'>38</span>
+<span class='line-number'>39</span>
+<span class='line-number'>40</span>
+<span class='line-number'>41</span>
+<span class='line-number'>42</span>
+<span class='line-number'>43</span>
+<span class='line-number'>44</span>
+<span class='line-number'>45</span>
+<span class='line-number'>46</span>
+<span class='line-number'>47</span>
+<span class='line-number'>48</span>
+<span class='line-number'>49</span>
+<span class='line-number'>50</span>
+<span class='line-number'>51</span>
+<span class='line-number'>52</span>
+</pre></td><td class='code'><pre><code class='obj-c'><span class='line'><span class="cm">/**</span>
+</span><span class='line'><span class="cm"> * This header is generated by class-dump-z 0.2a.</span>
+</span><span class='line'><span class="cm"> * class-dump-z is Copyright (C) 2009 by KennyTM~, licensed under GPLv3.</span>
+</span><span class='line'><span class="cm"> *</span>
+</span><span class='line'><span class="cm"> * Source: (null)</span>
+</span><span class='line'><span class="cm"> */</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="bp">_NSZone</span> <span class="n">NSZone</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="bp">CGPoint</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">float</span> <span class="n">_field1</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">float</span> <span class="n">_field2</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span> <span class="bp">CGPoint</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="bp">CGSize</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">float</span> <span class="n">_field1</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">float</span> <span class="n">_field2</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span> <span class="bp">CGSize</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="bp">CGRect</span> <span class="p">{</span>
+</span><span class='line'>    <span class="bp">CGPoint</span> <span class="n">_field1</span><span class="p">;</span>
+</span><span class='line'>    <span class="bp">CGSize</span> <span class="n">_field2</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span> <span class="bp">CGRect</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">typedef</span> <span class="k">struct</span> <span class="bp">_NSRange</span> <span class="p">{</span>
+</span><span class='line'>    <span class="kt">unsigned</span> <span class="n">_field1</span><span class="p">;</span>
+</span><span class='line'>    <span class="kt">unsigned</span> <span class="n">_field2</span><span class="p">;</span>
+</span><span class='line'><span class="p">}</span> <span class="n">NSRange</span><span class="p">;</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">@protocol</span> <span class="bp">NSObject</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">id</span><span class="p">)</span><span class="nf">description</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">unsigned</span><span class="p">)</span><span class="nf">retainCount</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">id</span><span class="p">)</span><span class="nf">autorelease</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="n">oneway</span> <span class="kt">void</span><span class="p">)</span><span class="nf">release</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">id</span><span class="p">)</span><span class="nf">retain</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">BOOL</span><span class="p">)</span><span class="nf">respondsToSelector:</span><span class="p">(</span><span class="kt">SEL</span><span class="p">)</span><span class="nv">selector</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">BOOL</span><span class="p">)</span><span class="nf">conformsToProtocol:</span><span class="p">(</span><span class="kt">id</span><span class="p">)</span><span class="nv">protocol</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">BOOL</span><span class="p">)</span><span class="nf">isMemberOfClass:</span><span class="p">(</span><span class="kt">Class</span><span class="p">)</span><span class="nv">aClass</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">BOOL</span><span class="p">)</span><span class="nf">isKindOfClass:</span><span class="p">(</span><span class="kt">Class</span><span class="p">)</span><span class="nv">aClass</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">BOOL</span><span class="p">)</span><span class="nf">isProxy</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">id</span><span class="p">)</span><span class="nf">performSelector:</span><span class="p">(</span><span class="kt">SEL</span><span class="p">)</span><span class="nv">selector</span> <span class="nf">withObject:</span><span class="p">(</span><span class="kt">id</span><span class="p">)</span><span class="nv">object</span> <span class="nf">withObject:</span><span class="p">(</span><span class="kt">id</span><span class="p">)</span><span class="nv">object3</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">id</span><span class="p">)</span><span class="nf">performSelector:</span><span class="p">(</span><span class="kt">SEL</span><span class="p">)</span><span class="nv">selector</span> <span class="nf">withObject:</span><span class="p">(</span><span class="kt">id</span><span class="p">)</span><span class="nv">object</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">id</span><span class="p">)</span><span class="nf">performSelector:</span><span class="p">(</span><span class="kt">SEL</span><span class="p">)</span><span class="nv">selector</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="n">NSZone</span><span class="o">*</span><span class="p">)</span><span class="nf">zone</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">id</span><span class="p">)</span><span class="nf">self</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">Class</span><span class="p">)</span><span class="nf">class</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">Class</span><span class="p">)</span><span class="nf">superclass</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">unsigned</span><span class="p">)</span><span class="nf">hash</span><span class="p">;</span>
+</span><span class='line'><span class="p">-(</span><span class="kt">BOOL</span><span class="p">)</span><span class="nf">isEqual:</span><span class="p">(</span><span class="kt">id</span><span class="p">)</span><span class="nv">equal</span><span class="p">;</span>
+</span><span class='line'><span class="k">@optional</span>
+</span><span class='line'><span class="o">-</span><span class="p">(</span><span class="kt">id</span><span class="p">)</span><span class="n">debugDescription</span><span class="p">;</span>
+</span><span class='line'><span class="k">@end</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h3><strong>ps:</strong></h3>
+
+<ol>
+<li>使用 <code>class-dump-z xxxx &gt; ./xxxx-classdump.txt</code> 可以将目标程序的代码信息导出到单个文本文件中方便查找。</li>
+<li>使用 <code>class-dump-z -H -o xxxx ./SourceCode</code> 可以将目标程序的所有代码信息以头文件的形式输出到指定目录，每个类一个文件。</li>
+</ol>
+
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Orin Chen</span></span>
+
+      
+
+
+
+
+<time class='entry-date' datetime='2014-02-10T09:26:19+08:00'><span class='date'><span class='date-month'>Feb</span> <span class='date-day'>10</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>9:26 am</span></time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/hack/'>hack</a>, <a class='category' href='/blog/categories/ios/'>ios</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  
+  
+
+  
+  <!-- JiaThis Button BEGIN -->
+  <div class="jiathis_style">
+    <span class="jiathis_txt">分享到：</span>
+    <a class="jiathis_button_tsina">新浪微博</a>
+    <a class="jiathis_button_googleplus">Google+</a>
+    <a class="jiathis_button_renren">人人网</a>
+    <a class="jiathis_button_qzone">QQ空间</a>
+    <a class="jiathis_button_tqq">腾讯微博</a>
+    <a href="http://www.jiathis.com/share" class="jiathis jiathis_txt jiathis_separator jtico jtico_jiathis" target="_blank">更多</a>
+    <a class="jiathis_counter_style"></a>
+  </div>
+  <script type="text/javascript" src="http://v2.jiathis.com/code/jia.js?uid=1334720487296344" charset="utf-8"></script>
+  <p/>
+  <!-- JiaThis Button END -->
+
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2014/01/25/how-to-inspect-view-hierarchy-of-3rd-party-apps/" title="Previous Post: 如何查看第三方 App 的视图结构">&laquo; 如何查看第三方 App 的视图结构</a>
+      
+      
+        <a class="basic-alignment right" href="/blog/2014/03/04/getting-to-know-textkit/" title="Next Post: 认识 TextKit">认识 TextKit &raquo;</a>
+      
+    </p>
+  </footer>
+</article>
+
+  <section>
+    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+  </section>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/05/06/create-aliase-of-sublime-text-in-zsh/">在 ZSH 中调用 Sublime Text</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/11/ios7-interactive-transitions/">iOS 7 交互式过渡</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/26/a-look-inside-blocks/">谈Objective-C Block的实现</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/20/objective-c-object-model/">Objective-C对象模型及应用</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/15/use-gcd/">使用 GCD</a>
+      </li>
+    
+  </ul>
+</section>
+
+<section>
+  <h1>GitHub Repos</h1>
+  <ul id="gh_repos">
+    <li class="loading">Status updating&#8230;</li>
+  </ul>
+  
+  <a href="https://github.com/orinchen">@orinchen</a> on GitHub
+  
+  <script type="text/javascript">
+    $(document).ready(function(){
+        if (!window.jXHR){
+            var jxhr = document.createElement('script');
+            jxhr.type = 'text/javascript';
+            jxhr.src = '/javascripts/libs/jXHR.js';
+            var s = document.getElementsByTagName('script')[0];
+            s.parentNode.insertBefore(jxhr, s);
+        }
+
+        github.showRepos({
+            user: 'orinchen',
+            count: 0,
+            skip_forks: true,
+            target: '#gh_repos'
+        });
+    });
+  </script>
+  <script src="/javascripts/github.js" type="text/javascript"> </script>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 - Orin Chen -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'orin-world';
+      
+        
+        // var disqus_developer = 1;
+        var disqus_identifier = 'http://orinchen.github.io/blog/2014/02/10/crack-ios-apps-with-clutch-and-class-dump-z/';
+        var disqus_url = 'http://orinchen.github.io/blog/2014/02/10/crack-ios-apps-with-clutch-and-class-dump-z/';
+        var disqus_script = 'embed.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = '//' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>

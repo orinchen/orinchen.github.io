@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: Zsh | O's World]]></title>
+  <link href="http://orinchen.github.io/blog/categories/zsh/atom.xml" rel="self"/>
+  <link href="http://orinchen.github.io/"/>
+  <updated>2014-12-23T14:39:05+08:00</updated>
+  <id>http://orinchen.github.io/</id>
+  <author>
+    <name><![CDATA[Orin Chen]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[在 ZSH 中调用 Sublime Text]]></title>
+    <link href="http://orinchen.github.io/blog/2014/05/06/create-aliase-of-sublime-text-in-zsh/"/>
+    <updated>2014-05-06T10:52:50+08:00</updated>
+    <id>http://orinchen.github.io/blog/2014/05/06/create-aliase-of-sublime-text-in-zsh</id>
+    <content type="html"><![CDATA[<h2>为Sublime Text 创建 symbolic link</h2>
+
+<p>Terminal 不认识 Sublime Text，所以首先创建 symbolic link.</p>
+
+<pre><code class="bash">ln -s /Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl /usr/local/bin/sublime
+</code></pre>
+
+<h2>在 .zshrc 文件里面使用 sublime</h2>
+
+<p>创建完 symbolic link 后就可以在 .zshrc 里面调用 Sublime Text 了！</p>
+
+<pre><code>alias zshconfig="sublime ~/.zshrc"
+alias ohmyzsh="sublime ~/.oh-my-zsh"
+
+alias -s markdown=sublime
+</code></pre>
+]]></content>
+  </entry>
+  
+</feed>

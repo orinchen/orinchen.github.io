@@ -1,1 +1,454 @@
-My Octopress Page is coming soon &hellip;
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>O&#8217;s World</title>
+  <meta name="author" content="Orin Chen">
+
+  
+  <meta name="description" content="为Sublime Text 创建 symbolic link Terminal 不认识 Sublime Text，所以首先创建 symbolic link. 1
+ln -s /Applications/Sublime\ Text.app/Contents/SharedSupport/bin/ &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://orinchen.github.io">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <link href="/atom.xml" rel="alternate" title="O's World" type="application/atom+xml">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+  <script>!window.jQuery && document.write(unescape('%3Cscript src="/javascripts/libs/jquery.min.js"%3E%3C/script%3E'))</script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href='http://fonts.googleapis.com/css?family=Delius' rel='stylesheet' type='text/css'>
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">O&#8217;s World</a></h1>
+  
+    <h2>努力！奋斗！</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="http://google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="sitesearch" value="orinchen.github.io">
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div class="blog-index">
+  
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2014/05/06/create-aliase-of-sublime-text-in-zsh/">在 ZSH 中调用 Sublime Text</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2014-05-06T10:52:50+08:00'><span class='date'><span class='date-month'>May</span> <span class='date-day'>6</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>10:52 am</span></time>
+        
+           | <a href="/blog/2014/05/06/create-aliase-of-sublime-text-in-zsh/#disqus_thread"
+             data-disqus-identifier="http://orinchen.github.io/blog/2014/05/06/create-aliase-of-sublime-text-in-zsh/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><h2>为Sublime Text 创建 symbolic link</h2>
+
+<p>Terminal 不认识 Sublime Text，所以首先创建 symbolic link.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'>ln -s /Applications/Sublime<span class="se">\ </span>Text.app/Contents/SharedSupport/bin/subl /usr/local/bin/sublime
+</span></code></pre></td></tr></table></div></figure>
+
+
+<h2>在 .zshrc 文件里面使用 sublime</h2>
+
+<p>创建完 symbolic link 后就可以在 .zshrc 里面调用 Sublime Text 了！</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'><span class="nb">alias </span><span class="nv">zshconfig</span><span class="o">=</span><span class="s2">&quot;sublime ~/.zshrc&quot;</span>
+</span><span class='line'><span class="nb">alias </span><span class="nv">ohmyzsh</span><span class="o">=</span><span class="s2">&quot;sublime ~/.oh-my-zsh&quot;</span>
+</span><span class='line'>
+</span><span class='line'><span class="nb">alias</span> -s <span class="nv">markdown</span><span class="o">=</span>sublime
+</span></code></pre></td></tr></table></div></figure>
+
+</div>
+  
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2014/04/11/ios7-interactive-transitions/">iOS 7 交互式过渡</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2014-04-11T10:04:52+08:00'><span class='date'><span class='date-month'>Apr</span> <span class='date-day'>11</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>10:04 am</span></time>
+        
+           | <a href="/blog/2014/04/11/ios7-interactive-transitions/#disqus_thread"
+             data-disqus-identifier="http://orinchen.github.io/blog/2014/04/11/ios7-interactive-transitions/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p>本文转载自:<a href="http://nonomori.farbox.com/post/ios-7-jiao-hu-shi-guo-du">NONOMORI</a></p>
+
+<p>iOS 7 新加入了一个介于 ViewController 之间的过渡的实现方法。本文将介绍如何利用自定义的过渡实现如图所示效果。</p>
+
+<p><img src="/images/posts/2014-04-11-ios7-interactive-transitions/001.gif"></p>
+
+<p>在这个例子中，我们将在两个 ViewConrtoller 的转换过程中加入一个自定义的过渡。DSLFirstViewController 是我们的第一个 viewController，其包含一个 CollectionView，每一个 Cell 都包含一张图片和一个标签。DSLSecondViewController 是我们的第二个 viewController，其上有一张图和一个标签。我们希望，当用户点击 DSLFirstViewController 的 Cell 后能平滑过渡到 DSLSecondViewController 中去。</p>
+
+<p>这个例子源代码已发布在 <a href="https://github.com/PeteC/InteractiveViewControllerTransitions">GitHub</a>。</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/04/11/ios7-interactive-transitions/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2014/03/26/a-look-inside-blocks/">谈Objective-C Block的实现</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2014-03-26T14:09:38+08:00'><span class='date'><span class='date-month'>Mar</span> <span class='date-day'>26</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>2:09 pm</span></time>
+        
+           | <a href="/blog/2014/03/26/a-look-inside-blocks/#disqus_thread"
+             data-disqus-identifier="http://orinchen.github.io/blog/2014/03/26/a-look-inside-blocks/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p>本文转载自:<a href="http://blog.devtang.com/blog/2013/07/28/a-look-inside-blocks/">唐巧的技术博客</a></p>
+
+<h2>前言</h2>
+
+<p><a href="http://blog.parse.com/2013/02/05/objective-c-blocks-quiz/">这里</a>有关于 <strong>block</strong> 的5道测试题，建议你阅读本文之前先做一下测试。</p>
+
+<p>先介绍一下什么是闭包。在 Wikipedia 上，<a href="http://en.wikipedia.org/wiki/Closure_(computer_science">闭包的定义</a>)是:</p>
+
+<blockquote><p>In programming languages, a closure is a function or reference to a function together with a referencing environment—a table storing a reference to each of the non-local variables (also called free variables or upvalues) of that function.</p></blockquote>
+
+<p>翻译过来就是：</p>
+
+<blockquote><p>闭包是一个函数（或指向函数的指针），再加上该函数执行的外部的上下文变量（有时候也称作自由变量）。</p></blockquote>
+
+<p><strong>block</strong> 实际上就是 Objective-C 语言对于闭包的实现。 <strong>block</strong> 配合上 <strong>dispatch_queue</strong>，可以方便地实现简单的多线程编程和异步编程，关于这个，我之前写过一篇文章介绍：<a href="http://blog.devtang.com/blog/2012/02/22/use-gcd/">《使用GCD》</a>。</p>
+
+<p>本文主要介绍 Objective-C 语言的 <strong>block</strong> 在编译器中的实现方式。主要包括：</p>
+
+<ol>
+<li><strong>block</strong> 的内部实现数据结构介绍</li>
+<li><strong>block</strong> 的三种类型及其相关的内存管理方式</li>
+<li><strong>block</strong> 如何通过 <strong>capture</strong> 变量来达到访问函数外的变量</li>
+</ol>
+
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/03/26/a-look-inside-blocks/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2014/03/20/objective-c-object-model/">Objective-C对象模型及应用</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2014-03-20T10:43:32+08:00'><span class='date'><span class='date-month'>Mar</span> <span class='date-day'>20</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>10:43 am</span></time>
+        
+           | <a href="/blog/2014/03/20/objective-c-object-model/#disqus_thread"
+             data-disqus-identifier="http://orinchen.github.io/blog/2014/03/20/objective-c-object-model/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p>本文转载自:<a href="http://blog.devtang.com/blog/2013/10/15/objective-c-object-model/">唐巧的技术博客</a></p>
+
+<h2>前言</h2>
+
+<p>本文主要介绍 Objective-C 对象模型的实现细节，以及 Objective-C 语言对象模型中对 <strong>isa swizzling</strong> 和 <strong>method swizzling</strong> 的支持。希望本文能加深你对 Objective-C 对象的理解。</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/03/20/objective-c-object-model/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2014/03/15/use-gcd/">使用 GCD</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2014-03-15T10:35:36+08:00'><span class='date'><span class='date-month'>Mar</span> <span class='date-day'>15</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>10:35 am</span></time>
+        
+           | <a href="/blog/2014/03/15/use-gcd/#disqus_thread"
+             data-disqus-identifier="http://orinchen.github.io/blog/2014/03/15/use-gcd/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p>本文转载自:<a href="http://blog.devtang.com/blog/2012/02/22/use-gcd/">唐巧的技术博客</a></p>
+
+<h2>什么是GCD</h2>
+
+<p>Grand Central Dispatch (GCD)是 Apple 开发的一个多核编程的解决方法。该方法在 Mac OS X 10.6 雪豹中首次推出，并随后被引入到了 iOS4.0 中。GCD 是一个替代诸如 NSThread, NSOperationQueue, NSInvocationOperation 等技术的很高效和强大的技术，它看起来象就其它语言的闭包(Closure)一样，但苹果把它叫做 blocks。</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/03/15/use-gcd/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  
+    <article>
+      
+  <header>
+    
+      <h1 class="entry-title"><a href="/blog/2014/03/07/working-with-strings/">玩转字符串</a></h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+<time class='entry-date' datetime='2014-03-07T23:32:36+08:00'><span class='date'><span class='date-month'>Mar</span> <span class='date-day'>7</span><span class='date-suffix'>th</span>, <span class='date-year'>2014</span></span> <span class='time'>11:32 pm</span></time>
+        
+           | <a href="/blog/2014/03/07/working-with-strings/#disqus_thread"
+             data-disqus-identifier="http://orinchen.github.io/blog/2014/03/07/working-with-strings/">Comments</a>
+        
+      </p>
+    
+  </header>
+
+
+  <div class="entry-content"><p>在每个应用里我们都大量使用字符串。下面我们将快速看看一些常见的操作字符串的方法，过一遍常见操作的最佳实践。</p>
+
+</div>
+  
+  
+    <footer>
+      <a rel="full-article" href="/blog/2014/03/07/working-with-strings/">Read on &rarr;</a>
+    </footer>
+  
+
+
+    </article>
+  
+  <div class="pagination">
+    
+      <a class="prev" href="/posts/2">&larr; Older</a>
+    
+    <a href="/blog/archives">Blog Archives</a>
+    
+  </div>
+</div>
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/05/06/create-aliase-of-sublime-text-in-zsh/">在 ZSH 中调用 Sublime Text</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/04/11/ios7-interactive-transitions/">iOS 7 交互式过渡</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/26/a-look-inside-blocks/">谈Objective-C Block的实现</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/20/objective-c-object-model/">Objective-C对象模型及应用</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/03/15/use-gcd/">使用 GCD</a>
+      </li>
+    
+  </ul>
+</section>
+
+<section>
+  <h1>GitHub Repos</h1>
+  <ul id="gh_repos">
+    <li class="loading">Status updating&#8230;</li>
+  </ul>
+  
+  <a href="https://github.com/orinchen">@orinchen</a> on GitHub
+  
+  <script type="text/javascript">
+    $(document).ready(function(){
+        if (!window.jXHR){
+            var jxhr = document.createElement('script');
+            jxhr.type = 'text/javascript';
+            jxhr.src = '/javascripts/libs/jXHR.js';
+            var s = document.getElementsByTagName('script')[0];
+            s.parentNode.insertBefore(jxhr, s);
+        }
+
+        github.showRepos({
+            user: 'orinchen',
+            count: 0,
+            skip_forks: true,
+            target: '#gh_repos'
+        });
+    });
+  </script>
+  <script src="/javascripts/github.js" type="text/javascript"> </script>
+</section>
+
+
+
+
+
+  
+</aside>
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 - Orin Chen -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+<script type="text/javascript">
+      var disqus_shortname = 'orin-world';
+      
+        
+        var disqus_script = 'count.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = '//' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+
+
+
+
+
+
+</body>
+</html>
